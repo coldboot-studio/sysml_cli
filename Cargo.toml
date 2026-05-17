@@ -1,0 +1,10 @@
+[package]
+name = "sysml-validate-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust CLI validation tooling for SysML v2 textual models."
+license = "MIT"
+
+[[bin]]
+name = "sysml-validate-rs"
+path = "src/main.rs"
