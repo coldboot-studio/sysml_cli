@@ -893,6 +893,9 @@ fn validate_statement_shapes(path: &Path, tokens: &[Token]) -> Vec<Diagnostic> {
             if previous_value(tokens, index) == Some("def") {
                 continue;
             }
+            if matches!(previous_value(tokens, index), Some("assert")) {
+                continue;
+            }
             if is_connector_short_form(&token.value) {
                 diagnostics.extend(expect_terminator(
                     path,
@@ -913,6 +916,16 @@ fn validate_statement_shapes(path: &Path, tokens: &[Token]) -> Vec<Diagnostic> {
                     path,
                     Some(token.position()),
                 )),
+                Some(next)
+                    if next.value == "{" && is_anonymous_block_usage_keyword(&token.value) =>
+                {
+                    diagnostics.extend(expect_terminator(
+                        path,
+                        tokens,
+                        index,
+                        &format!("{} usage", token.value),
+                    ))
+                }
                 Some(next) if next.value == ";" || next.value == "{" => {
                     diagnostics.push(Diagnostic::new(
                         Severity::Error,
@@ -1107,7 +1120,12 @@ fn starts_named_member(tokens: &[Token], index: usize) -> bool {
     let token = &tokens[index];
     token.value == "package"
         || (is_definition_keyword(&token.value) && next_value(tokens, index) == Some("def"))
-        || (is_usage_keyword(&token.value) && previous_value(tokens, index) != Some("def"))
+        || (is_usage_keyword(&token.value)
+            && !is_connector_short_form(&token.value)
+            && previous_value(tokens, index) != Some("def")
+            && !matches!(previous_value(tokens, index), Some("assert"))
+            && !contains_before_end(tokens, index, ":>")
+            && !contains_before_end(tokens, index, ":>>"))
 }
 
 fn declared_name_after(tokens: &[Token], index: usize) -> Option<&Token> {
@@ -1115,17 +1133,48 @@ fn declared_name_after(tokens: &[Token], index: usize) -> Option<&Token> {
     if tokens.get(cursor).map(|token| token.value.as_str()) == Some("def") {
         cursor += 1;
     }
-    while cursor < tokens.len() {
-        let token = &tokens[cursor];
-        if token.kind == TokenKind::Identifier {
-            return Some(token);
-        }
-        if token.value == ";" || token.value == "{" {
+
+    cursor = skip_metadata_prefix(tokens, cursor);
+    let token = tokens.get(cursor)?;
+    if is_unnamed_usage_prefix(&token.value) {
+        return None;
+    }
+    if matches!(token.kind, TokenKind::Identifier | TokenKind::String) {
+        if next_value(tokens, cursor) == Some(".") {
             return None;
+        }
+        return Some(token);
+    }
+    None
+}
+
+fn skip_metadata_prefix(tokens: &[Token], mut cursor: usize) -> usize {
+    if tokens.get(cursor).map(|token| token.value.as_str()) != Some("<") {
+        return cursor;
+    }
+    let mut depth = 0usize;
+    while cursor < tokens.len() {
+        match tokens[cursor].value.as_str() {
+            "<" => depth += 1,
+            ">" => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return cursor + 1;
+                }
+            }
+            ";" | "{" if depth == 0 => return cursor,
+            _ => {}
         }
         cursor += 1;
     }
-    None
+    cursor
+}
+
+fn is_unnamed_usage_prefix(value: &str) -> bool {
+    matches!(
+        value,
+        ":" | ":>" | ":>>" | "::" | "." | "of" | "from" | "to" | "connect"
+    )
 }
 
 fn is_declaration_name(tokens: &[Token], index: usize) -> bool {
@@ -1178,6 +1227,10 @@ fn is_connector_short_form(value: &str) -> bool {
         value,
         "bind" | "connect" | "satisfy" | "verify" | "include" | "perform" | "assert"
     )
+}
+
+fn is_anonymous_block_usage_keyword(value: &str) -> bool {
+    matches!(value, "action" | "constraint")
 }
 
 fn is_definition_keyword(value: &str) -> bool {
