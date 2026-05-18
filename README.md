@@ -1,7 +1,7 @@
-# sysml-cli
+# sysml-validate
 
-`sysml-validate` is a command-line validation tool for SysML v2 and KerML textual
-models. It is aligned with the public release layout from
+`sysml-validate` is a Rust CLI **preflight** validator for SysML v2 and KerML
+textual models. It is aligned with the public release layout from
 [Systems-Modeling/SysML-v2-Release](https://github.com/Systems-Modeling/SysML-v2-Release):
 
 - textual grammar references live in `bnf/`, including `SysML-textual-bnf.kebnf`
@@ -9,22 +9,24 @@ models. It is aligned with the public release layout from
 - example projects live in `sysml/` and `kerml/`
 - normative model libraries live in `sysml.library/`
 
-The native validator is intentionally conservative: it catches deterministic
+The native backend is intentionally conservative: it catches deterministic
 textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
+> **Status.** Preflight only today. See [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md)
+> for the roadmap to a real conformance-grade validator with US Government
+> acceptance artifacts (SARIF, SBOM, SLSA L3 provenance, NIST SSDF mapping,
+> optional DO-330 TQL-5 qualification kit).
+
 ## Install
-
-```powershell
-python -m pip install -e .
-```
-
-The Rust implementation can be built without external crates:
 
 ```powershell
 cargo build --release
 ```
+
+The binary is in `target/release/sysml-validate(.exe)`. No external crates are
+used today; the only runtime dependency is the Rust standard library.
 
 ## Usage
 
@@ -35,31 +37,54 @@ sysml-validate validate .\model.sysml
 sysml-validate validate .\sysml .\kerml --format json
 ```
 
-Use the official backend through a command template. `{file}` is replaced with
-each model path.
+Delegate to the official backend. `{file}` is replaced with each model path.
+The argument list is shell-style tokenized (single quotes, double quotes,
+`\\` escapes inside double quotes) and invoked with positional argv — **no
+shell process is spawned**, so `--official-command` cannot inject shell
+metacharacters.
 
 ```powershell
-sysml-validate validate .\model.sysml --backend official --official-command "sysml-validator {file}"
+sysml-validate validate .\model.sysml --backend official `
+  --official-command "sysml-validator --strict {file}" `
+  --timeout 120
 ```
 
-Show the release conformance references encoded in the tool:
+Show the release conformance references and model corpora the tool knows
+about:
 
 ```powershell
 sysml-validate grammar-info
+sysml-validate corpus-info
 ```
 
-Rust equivalent:
+## Output
 
-```powershell
-cargo run -- validate .\examples
-cargo run -- grammar-info
-cargo run -- corpus-info
+JSON output includes a `metadata` block with the tool name and version, rule
+catalog version, invocation timestamp (RFC 3339 UTC), backend identity, and
+ruleset flags. This is the per-run audit record consumers should retain
+alongside their build provenance.
+
+```json
+{
+  "metadata": {
+    "tool": {"name": "sysml-validate", "version": "0.2.0"},
+    "rule_catalog": {"version": "0.1.0"},
+    "invocation": {
+      "timestamp_utc": "2026-05-18T13:00:46Z",
+      "timestamp_epoch_seconds": 1779109246,
+      "backend": "native",
+      "strict": false,
+      "format": "json"
+    }
+  },
+  "results": [ /* ... */ ]
+}
 ```
 
 ## Public Test Models
 
-The Rust CLI includes `corpus-info` to list online SysML v2 model corpora that are
-useful for smoke tests:
+`corpus-info` lists online SysML v2 model corpora that are useful for smoke
+tests:
 
 - `Systems-Modeling/SysML-v2-Release`: official examples, training, validation,
   and library models.
@@ -68,7 +93,7 @@ useful for smoke tests:
 - `sensmetry/smart-home-hub-example`: a small complete architecture example.
 - OMG machine-readable SysML files, including the Simple Vehicle Model.
 
-## Native Checks
+## Native Checks (today)
 
 The built-in backend validates:
 
@@ -87,9 +112,57 @@ Exit codes:
 - `1`: validation errors found
 - `2`: CLI or backend configuration error
 
+## Diagnostic Code Catalog
+
+Rule codes use the namespace `SYSML0xx`. The current set:
+
+| Code      | Severity | Meaning |
+|-----------|----------|---------|
+| `SYSML001` | error   | Invalid control character in source text. |
+| `SYSML002` | error   | Unterminated string literal. |
+| `SYSML003` | error   | Unterminated block comment. |
+| `SYSML010` | error   | Unsupported file extension. |
+| `SYSML012` | error   | Unable to read file as UTF-8 text. |
+| `SYSML020` | error   | Unmatched closing delimiter. |
+| `SYSML021` | error   | Unclosed delimiter. |
+| `SYSML030` | error   | Expected `package` after `library`. |
+| `SYSML031` | error   | Alias declaration must include `for`. |
+| `SYSML032` | error   | Dependency must include a supplier after `to`. |
+| `SYSML033` | error   | Usage missing a declared name or specialization. |
+| `SYSML034` | error   | Definition missing a name. |
+| `SYSML035` | error   | Missing `;` or `{` terminator. |
+| `SYSML040` | warning | Identifier reference not declared in this file (with `--strict`). |
+| `SYSML041` | error   | Duplicate member name in lexical scope. |
+| `SYSML900` | error   | `--official-command` parse/setup error. |
+| `SYSML901` | error   | Official validator could not be executed. |
+| `SYSML902` | error   | Official validator returned a non-zero exit status. |
+| `SYSML903` | info    | Official validator returned informational output. |
+
+When any rule's meaning changes, the rule catalog version in
+[`src/report.rs`](src/report.rs) is bumped so consumers can gate baselines.
+
 ## Scope
 
 SysML v2 has a formal abstract syntax, semantic constraints, and model library
 resolution rules. The native backend is useful in CI as a fast preflight gate,
-but full language conformance should be delegated to the official release/pilot
-implementation backend.
+but full language conformance must today be delegated to the official
+release/pilot implementation backend. See
+[`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md) for
+the planned path to a real validator.
+
+## Security Posture
+
+- No network access in any subcommand.
+- No automatic updates.
+- `--official-command` is parsed into argv and invoked without a shell. Shell
+  metacharacters in the template survive only as literal argv content; they
+  are not interpreted.
+- No telemetry.
+
+These properties are intended for air-gapped and DoD IL4/IL5 deployment
+contexts. They will be re-asserted in a `SECURITY.md` and `OFFLINE.md` in
+Phase 1 of the roadmap.
+
+## License
+
+MIT. See `LICENSE`.

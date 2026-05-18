@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "sysml-validate-rs"
-version = "0.1.0"
+name = "sysml-validate"
+version = "0.2.0"
