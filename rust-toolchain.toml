@@ -1,0 +1,13 @@
+# Pin the Rust toolchain. Reproducible builds (US-109) require identical
+# rustc across two independent builds; this file fixes the version every
+# `cargo` invocation uses.
+#
+# When bumping this version:
+#   1. Update the SHA in docs/REPRODUCING.md
+#   2. Re-run the `diffoscope` check in CI
+#   3. Bump the rule catalog version in src/report.rs only if a rustc
+#      change alters diagnostic emission order or content
+[toolchain]
+channel = "1.85.0"
+components = ["cargo", "clippy", "rust-src", "rustc", "rustfmt"]
+profile = "minimal"

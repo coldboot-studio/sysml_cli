@@ -21,3 +21,18 @@ wait-timeout = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = { version = "0.8", default-features = false, features = ["parse"] }
+
+# Reproducible-build settings (US-109). Single codegen unit and fat LTO
+# produce a single deterministic object; strip removes timestamps and
+# symbol tables that vary across runs. panic=abort keeps the binary
+# smaller and removes unwinding machinery that varies subtly between
+# rustc versions.
+[profile.release]
+codegen-units = 1
+lto = "fat"
+strip = "symbols"
+panic = "abort"
+overflow-checks = false
+opt-level = 3
+debug = false
+incremental = false

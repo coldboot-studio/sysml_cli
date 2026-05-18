@@ -1,0 +1,32 @@
+# Dependabot configuration. Catches vulnerable transitive dependencies
+# (NIST SSDF RV.1) and stale GitHub Actions pins. PRs land on a weekly
+# cadence; security alerts fire immediately.
+
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "rust"]
+    commit-message:
+      prefix: "cargo"
+    # Group minor + patch into a single PR per week to reduce noise.
+    # Major bumps still come as individual PRs.
+    groups:
+      patches:
+        update-types: ["patch"]
+      minors:
+        update-types: ["minor"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "actions"

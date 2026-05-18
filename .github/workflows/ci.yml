@@ -1,0 +1,89 @@
+# Pull-request CI. Verifies the build, tests, lints, and formatting on
+# every change. Release artifacts are produced by release.yml, not here.
+#
+# Permissions deliberately minimal: read-only on contents, nothing else.
+# This workflow does NOT have permission to publish anything.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        # TODO: pin to commit SHA before treating CI as load-bearing for
+        # SLSA L3. Tag pins are acceptable for development.
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        # Reads rust-toolchain.toml automatically; no version arg.
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build (locked)
+        run: cargo build --locked --verbose
+
+      - name: Test (locked)
+        run: cargo test --locked --verbose
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        # -D warnings turns lint warnings into errors. Adjust the deny
+        # list when adopting clippy-style rules.
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  audit:
+    name: cargo-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit dependencies for known vulnerabilities
+        # Reads Cargo.lock and checks against the RustSec advisory db.
+        # Counts toward NIST SSDF RV.1 (identify and respond to
+        # vulnerabilities in third-party components).
+        run: cargo audit --deny warnings

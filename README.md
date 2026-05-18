@@ -14,10 +14,16 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** Preflight only today. See [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md)
-> for the roadmap to a real conformance-grade validator with US Government
-> acceptance artifacts (SARIF, SBOM, SLSA L3 provenance, NIST SSDF mapping,
-> optional DO-330 TQL-5 qualification kit).
+> **Status.** Preflight validator with the Phase 1 government-acceptance
+> envelope shipped (v0.4.0): SARIF 2.1.0 / JUnit XML / JSON / text output,
+> SBOM + Sigstore + GPG + SLSA L3 provenance via the
+> [release workflow](.github/workflows/release.yml), reproducible
+> [release profile](Cargo.toml), pinned [Rust toolchain](rust-toolchain.toml),
+> and the security policy / offline contract / threat model below. See
+> [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md)
+> for the roadmap to a real conformance-grade validator (Phase 2: real
+> parser, library loading, name resolution) and the optional DO-330
+> TQL-5 qualification kit (Phase 3).
 
 ## Install
 
@@ -259,14 +265,23 @@ the planned path to a real validator.
 
 - No network access in any subcommand.
 - No automatic updates.
-- `--official-command` is parsed into argv and invoked without a shell. Shell
-  metacharacters in the template survive only as literal argv content; they
-  are not interpreted.
 - No telemetry.
+- `--official-command` is parsed into argv and invoked without a shell.
+  Shell metacharacters in the template survive only as literal argv
+  content; they are not interpreted.
 
 These properties are intended for air-gapped and DoD IL4/IL5 deployment
-contexts. They will be re-asserted in a `SECURITY.md` and `OFFLINE.md` in
-Phase 1 of the roadmap.
+contexts. Authoritative statements:
+
+- [`docs/SECURITY.md`](docs/SECURITY.md) — vulnerability disclosure
+  policy, release verification recipes (Sigstore + GPG + SLSA), NIST
+  800-53 cross-references.
+- [`docs/OFFLINE.md`](docs/OFFLINE.md) — per-subcommand network and
+  filesystem surface, vendoring for air-gap builds.
+- [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) — trust boundaries
+  defended and explicitly out of scope.
+- [`docs/REPRODUCING.md`](docs/REPRODUCING.md) — byte-identical rebuild
+  recipe for independent verification.
 
 ## License
 

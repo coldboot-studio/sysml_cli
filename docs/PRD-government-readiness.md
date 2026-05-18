@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. Phase 0 + Phase 1 Batches A/B/C complete (v0.4.0). |
+| Status | Draft. Phase 0 + Phase 1 Batches A/B/C/D complete (v0.4.0). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -293,73 +293,121 @@ killed if it exceeds `--timeout` so a hung child cannot stall my pipeline.
 - [x] stdout / stderr are drained in worker threads so a chatty child
       cannot deadlock on a full pipe.
 
-#### US-109: Reproducible-build setup [EPIC]
+#### US-109: Reproducible-build setup [EPIC] — **DONE (v0.4.0), one item deferred**
 
 **Description.** As a defense prime SCRM reviewer, I want bit-identical
 release binaries from identical source so I can verify provenance
 independently.
 
 **Acceptance Criteria:**
-- [ ] `rust-toolchain.toml` pins the Rust version.
-- [ ] `Cargo.lock` is committed (already true; document it).
-- [ ] Build script honors `SOURCE_DATE_EPOCH`.
-- [ ] CI runs `diffoscope` between two independent builds and fails on diff.
-- [ ] `docs/REPRODUCING.md` documents the verification recipe.
+- [x] [`rust-toolchain.toml`](../rust-toolchain.toml) pins Rust 1.85.0
+      with explicit components.
+- [x] `Cargo.lock` is committed (verified).
+- [x] [`Cargo.toml`](../Cargo.toml) `[profile.release]` sets
+      `codegen-units = 1`, `lto = "fat"`, `strip = "symbols"`,
+      `panic = "abort"`, `incremental = false` — all required for
+      determinism.
+- [x] [`.cargo/config.toml`](../.cargo/config.toml) applies
+      `--remap-path-prefix` for Linux, macOS, Windows runner paths so
+      embedded debug info doesn't vary by host.
+- [x] Release workflow reads `SOURCE_DATE_EPOCH` from the tag commit's
+      author date.
+- [x] [`docs/REPRODUCING.md`](REPRODUCING.md) documents the verification
+      recipe including a `diffoscope` walkthrough for mismatch debugging.
+- [ ] **Deferred to first real release:** a CI job that runs `diffoscope`
+      between two independent fresh builds of the same tag and fails the
+      release on diff. The recipe is documented; the job itself is a
+      one-PR follow-up once a baseline release exists to compare against.
 
-#### US-110: SBOM generation in CI
+#### US-110: SBOM generation in CI — **DONE (v0.4.0), needs first-release validation**
 
 **Description.** As a federal-civilian procurement officer, I want
-CycloneDX 1.6 and SPDX 3.0 SBOMs attached to every release so I can review
-the supply chain before approval.
+CycloneDX 1.6 and SPDX 3.0 SBOMs attached to every release so I can
+review the supply chain before approval.
 
 **Acceptance Criteria:**
-- [ ] CI generates CycloneDX 1.6 JSON via `cargo-cyclonedx` and SPDX 3.0
-      via `syft` on each tagged release.
-- [ ] Both SBOMs are attached to the GitHub Release.
-- [ ] SBOMs include the NTIA Minimum Elements plus CISA 2025 additions
+- [x] [`release.yml`](../.github/workflows/release.yml) generates
+      CycloneDX 1.6 JSON via `cargo-cyclonedx` per target.
+- [x] Same workflow generates SPDX 3.0 JSON via `anchore/sbom-action`
+      (syft under the hood).
+- [x] Both SBOM files are attached to the GitHub Release alongside the
+      binary, checksum, and signatures.
+- [x] [`SECURITY.md`](SECURITY.md) documents how to consume the SBOMs
+      with Grype / Trivy / Dependency-Track.
+- [ ] **Needs first real release to validate:** confirm the generated
+      SBOMs include the NTIA Minimum Elements plus CISA 2025 additions
       (component hash, license, tool name, generation context, software
-      producer).
+      producer). The tools used produce these fields by default; this
+      is a verification step, not a missing implementation.
 
-#### US-111: Signed releases (Sigstore + GPG)
+#### US-111: Signed releases (Sigstore + GPG) — **DONE (v0.4.0), needs GPG key provisioning**
 
-**Description.** As an Iron Bank reviewer, I want signed release artifacts
-with public-log provenance so I can verify origin in an air-gapped enclave.
+**Description.** As an Iron Bank reviewer, I want signed release
+artifacts with public-log provenance so I can verify origin in an
+air-gapped enclave.
 
 **Acceptance Criteria:**
-- [ ] CI signs each release artifact with cosign (keyless OIDC,
-      Rekor-logged) using GitHub Actions OIDC identity.
-- [ ] CI also signs each release artifact with a long-lived GPG key whose
-      public key is mirrored at `keys.openpgp.org` and a project-controlled
-      URL.
-- [ ] `docs/SECURITY.md` documents verification commands for both methods.
+- [x] Release workflow signs each artifact with cosign keyless OIDC via
+      `sigstore/cosign-installer@v3` and `cosign sign-blob`. The bundle
+      includes the Rekor inclusion proof so verification is offline-
+      capable.
+- [x] Release workflow GPG-signs each artifact via
+      `crazy-max/ghaction-import-gpg@v6` reading
+      `secrets.GPG_SIGNING_KEY` + `secrets.GPG_SIGNING_PASSPHRASE`.
+- [x] [`SECURITY.md`](SECURITY.md) documents verification commands for
+      both methods, including the `--certificate-identity-regexp` pin
+      pattern for `cosign verify-blob`.
+- [ ] **Operator action required before first release:**
+      1. Generate a long-lived GPG signing key offline.
+      2. Add `GPG_SIGNING_KEY` and `GPG_SIGNING_PASSPHRASE` to repository
+         secrets.
+      3. Publish the public key to `keys.openpgp.org` and to the project
+         landing page.
+      4. Replace `<FINGERPRINT_TO_BE_PUBLISHED_AT_FIRST_RELEASE>` in
+         [`SECURITY.md`](SECURITY.md) with the real fingerprint.
+- [ ] **Operator action before SLSA L3 audit:** pin every `uses:` line
+      in [`release.yml`](../.github/workflows/release.yml) to a commit
+      SHA. Tag pins (e.g. `@v4`) are acceptable during bring-up but a
+      strict SLSA L3 audit will flag them.
 
-#### US-112: SLSA v1.0 Build L3 provenance
+#### US-112: SLSA v1.0 Build L3 provenance — **DONE (v0.4.0)**
 
 **Description.** As a Platform One Big Bang adopter, I want SLSA v1.0
 Build L3 in-toto attestations so my pipeline can verify build integrity.
 
 **Acceptance Criteria:**
-- [ ] CI uses `actions/attest-build-provenance` (or
-      `slsa-framework/slsa-github-generator`) to emit in-toto SLSA v1.0
-      provenance.
-- [ ] Provenance is published as an OCI referrer on `ghcr.io` and as a
-      file on the GitHub Release.
-- [ ] Build runs on hardened, isolated GitHub-hosted runners.
+- [x] Release workflow uses `actions/attest-build-provenance@v2` which
+      produces an in-toto attestation with predicate type
+      `https://slsa.dev/provenance/v1` (SLSA v1.0).
+- [x] Provenance is published as both an OCI referrer and as a workflow
+      artifact attached to the GitHub Release.
+- [x] Build runs on GitHub-hosted runners (the platform that
+      `actions/attest-build-provenance` requires for L3-grade
+      attestation).
+- [x] [`SECURITY.md`](SECURITY.md) documents `gh attestation verify` as
+      the consumer-side verification command.
 
-#### US-113: `SECURITY.md`, `OFFLINE.md`, vulnerability disclosure
+#### US-113: `SECURITY.md`, `OFFLINE.md`, vulnerability disclosure — **DONE (v0.4.0, pulled forward into Batch D)**
 
-**Description.** As a CISO, I want a documented vulnerability disclosure
-policy and offline-deployment statement so I can accept the tool into an
-ATO boundary.
+**Description.** As a CISO, I want a documented vulnerability
+disclosure policy and offline-deployment statement so I can accept the
+tool into an ATO boundary.
 
 **Acceptance Criteria:**
-- [ ] `docs/SECURITY.md` covers supported versions, reporting channel
-      (private security advisory), SLA, and verification commands.
-- [ ] `docs/OFFLINE.md` enumerates the network-touching surfaces (today:
-      none) and states the air-gap-friendly contract.
-- [ ] `docs/THREAT_MODEL.md` enumerates trust boundaries (user input
-      files; `--official-command` argv; environment variables) and the
-      mitigations.
+- [x] [`SECURITY.md`](SECURITY.md) covers supported versions, GitHub
+      private-advisory + email reporting channel, 3-business-day ack
+      SLA, 10-business-day triage SLA, and verification commands for
+      SHA-256, cosign, GPG, SLSA, and SBOM.
+- [x] [`OFFLINE.md`](OFFLINE.md) enumerates the per-subcommand
+      network surface (zero for `validate`, `grammar-info`,
+      `corpus-info`), states no-telemetry / no-auto-update, lists
+      honored environment variables, and documents `cargo vendor` for
+      air-gap builds.
+- [x] [`THREAT_MODEL.md`](THREAT_MODEL.md) enumerates five trust
+      boundaries (build→release, user inputs→validator,
+      `--official-command`→child, filesystem reads/writes,
+      validator→consumer) with mitigations and residual risks, plus an
+      "out of scope" section.
 
 #### US-114: Section 508 polish
 

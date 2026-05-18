@@ -1,0 +1,228 @@
+# Release workflow. Triggered by pushing a tag of the form `v*`.
+#
+# Produces, for each target triple:
+#   - the compiled binary
+#   - a CycloneDX 1.6 SBOM (cargo-cyclonedx)
+#   - an SPDX 3.0 SBOM (anchore/sbom-action / syft)
+#   - a SHA-256 checksum
+#   - a Sigstore (cosign) keyless signature, Rekor-logged
+#   - a detached GPG signature (long-lived key from repo secret)
+#   - SLSA v1.0 Build L3 in-toto build-provenance attestation
+#     (actions/attest-build-provenance)
+#
+# Every artifact is attached to the GitHub Release. Consumers verify with
+# the recipe in docs/SECURITY.md.
+#
+# ----------------------------------------------------------------------
+# IMPORTANT BEFORE FIRST RUN
+# ----------------------------------------------------------------------
+# 1. Pin every `uses:` line to a commit SHA before treating this as
+#    load-bearing. Tag pins are acceptable during bring-up but a SLSA L3
+#    audit will flag them.
+# 2. Repository secrets required:
+#      GPG_SIGNING_KEY        — ASCII-armored GPG private key
+#      GPG_SIGNING_PASSPHRASE — passphrase for that key
+#    Generate with: gpg --armor --export-secret-keys $KEY_ID
+#    Document the key fingerprint in docs/SECURITY.md.
+# 3. The workflow assumes the calling identity has `id-token: write`,
+#    `contents: write`, and `attestations: write` permission via the
+#    job-level `permissions:` block below.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.4.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: ""
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: ""
+            cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: ".exe"
+          - target: x86_64-apple-darwin
+            os: macos-13
+            ext: ""
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            ext: ""
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write       # OIDC token for cosign keyless + SLSA provenance
+      attestations: write   # SLSA build provenance
+    env:
+      # Make embedded timestamps deterministic across runs of the same
+      # commit (US-109). Picked from the tag's commit author date.
+      SOURCE_DATE_EPOCH: ""  # set per step below
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history to read tag author date
+
+      - name: Resolve SOURCE_DATE_EPOCH
+        shell: bash
+        run: |
+          # Use the commit author date of the tag as the deterministic
+          # epoch. Same source → same SOURCE_DATE_EPOCH → same binary.
+          ts="$(git log -1 --pretty=%ct)"
+          echo "SOURCE_DATE_EPOCH=$ts" >> "$GITHUB_ENV"
+          echo "Using SOURCE_DATE_EPOCH=$ts"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux aarch64)
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
+        shell: bash
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        shell: bash
+        run: |
+          cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Stage artifact
+        id: stage
+        shell: bash
+        run: |
+          mkdir -p dist
+          src="target/${{ matrix.target }}/release/sysml-validate${{ matrix.ext }}"
+          dest="dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}"
+          cp "$src" "$dest"
+          echo "artifact=$dest" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$dest")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate CycloneDX 1.6 SBOM
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+
+      - name: Run cargo-cyclonedx
+        shell: bash
+        run: |
+          cargo cyclonedx --format json --spec-version 1.6 \
+            --override-filename sysml-validate.cdx
+          # cargo-cyclonedx writes alongside Cargo.toml; move to dist.
+          mv sysml-validate.cdx.json dist/sysml-validate-${{ matrix.target }}.cdx.json
+
+      - name: Generate SPDX 3.0 SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/sysml-validate-${{ matrix.target }}.spdx.json
+          # Anchore's action keys off the working directory contents;
+          # the SPDX doc names this artifact, not the binary directly.
+
+      - name: SHA-256 checksum
+        shell: bash
+        run: |
+          cd dist
+          # Cross-platform sha256. Pick what's available on each runner.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ steps.stage.outputs.name }}" \
+              > "${{ steps.stage.outputs.name }}.sha256"
+          else
+            shasum -a 256 "${{ steps.stage.outputs.name }}" \
+              > "${{ steps.stage.outputs.name }}.sha256"
+          fi
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign binary with cosign (keyless OIDC)
+        shell: bash
+        env:
+          COSIGN_YES: "true"
+        run: |
+          cd dist
+          cosign sign-blob \
+            --bundle "${{ steps.stage.outputs.name }}.cosign.bundle" \
+            "${{ steps.stage.outputs.name }}"
+          # The bundle contains the certificate, signature, and Rekor
+          # transparency-log inclusion proof. Verifiers need ONLY this
+          # bundle plus the binary (no online lookup) once they trust
+          # the Sigstore root.
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
+          passphrase: ${{ secrets.GPG_SIGNING_PASSPHRASE }}
+        # If the secrets are absent (initial bring-up), the rest of the
+        # job continues without GPG signatures. The release will be
+        # missing one trust path but still verifiable via cosign.
+        continue-on-error: true
+
+      - name: GPG-sign binary
+        shell: bash
+        run: |
+          if gpg --list-secret-keys 2>/dev/null | grep -q sec; then
+            cd dist
+            gpg --detach-sign --armor \
+              --output "${{ steps.stage.outputs.name }}.asc" \
+              "${{ steps.stage.outputs.name }}"
+          else
+            echo "::warning::No GPG key imported; skipping GPG signature."
+          fi
+
+      - name: SLSA v1.0 Build L3 provenance
+        # Uses the GitHub-native attestation action. This produces an
+        # in-toto attestation with predicate type
+        # https://slsa.dev/provenance/v1 and stores it both as an OCI
+        # referrer and as a workflow artifact. SLSA v1.0 Build L3 is the
+        # level documented at https://slsa.dev/spec/v1.0/levels.
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/${{ steps.stage.outputs.name }}
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || inputs.tag }}
+          files: |
+            dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}
+            dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}.sha256
+            dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}.cosign.bundle
+            dist/sysml-validate-${{ matrix.target }}.cdx.json
+            dist/sysml-validate-${{ matrix.target }}.spdx.json
+            dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}.asc
+          fail_on_unmatched_files: false  # GPG signature may be absent

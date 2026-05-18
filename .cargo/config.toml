@@ -1,0 +1,22 @@
+# Cargo configuration. Settings here apply to every `cargo` invocation in
+# this workspace and are part of the reproducible-build contract (US-109).
+
+[build]
+# Strip user-specific absolute paths from debug info and panic messages.
+# Without this, two builds on different machines produce different binaries
+# even with identical sources because the home directory bakes in. The
+# `--remap-path-prefix` rustc flag rewrites them to a stable placeholder.
+#
+# Order matters: registry paths must remap first so they don't get rewritten
+# under the source prefix.
+rustflags = [
+    "--remap-path-prefix", "/home/runner/.cargo/registry=/cargo/registry",
+    "--remap-path-prefix", "/Users/runner/.cargo/registry=/cargo/registry",
+    "--remap-path-prefix", "C:/Users/runneradmin/.cargo/registry=/cargo/registry",
+]
+
+[net]
+# CI runners and production builds should never reach out for git
+# dependencies. We have none today; this is a defense-in-depth gate.
+git-fetch-with-cli = false
+offline = false  # cargo build itself must read crates.io for first build
