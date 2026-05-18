@@ -3,8 +3,10 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 
+use crate::config::{Config, RuleOverride};
 use crate::diag::{Diagnostic, Severity, ValidationResult};
 use crate::lex::{Scanner, Token, TokenKind};
+use crate::suppress::apply_suppressions;
 
 pub fn is_supported_model_path(path: &Path) -> bool {
     matches!(
@@ -13,7 +15,7 @@ pub fn is_supported_model_path(path: &Path) -> bool {
     )
 }
 
-pub fn validate_native(path: &Path, strict: bool) -> ValidationResult {
+pub fn validate_native(path: &Path, strict: bool, config: &Config) -> ValidationResult {
     let mut result = ValidationResult::new(path);
     if !is_supported_model_path(path) {
         result.diagnostics.push(Diagnostic::new(
@@ -40,8 +42,12 @@ pub fn validate_native(path: &Path, strict: bool) -> ValidationResult {
         }
     };
 
-    let (tokens, scan_diagnostics) = Scanner::new(path, &text).scan();
-    result.diagnostics.extend(scan_diagnostics);
+    let scan = Scanner::new(path, &text).scan();
+    let tokens = scan.tokens;
+    let mut suppressions = scan.suppressions;
+    let non_blank_lines = scan.non_blank_lines;
+
+    result.diagnostics.extend(scan.diagnostics);
     result
         .diagnostics
         .extend(validate_balanced_delimiters(path, &tokens));
@@ -56,7 +62,39 @@ pub fn validate_native(path: &Path, strict: bool) -> ValidationResult {
             .diagnostics
             .extend(validate_reference_candidates(path, &tokens));
     }
+
+    // Apply suppressions first so an unused-suppression notice respects
+    // diagnostics that the next pass would have promoted/demoted/dropped.
+    // Suppressions mark in place; they do not remove from the list.
+    let unused_suppressions = apply_suppressions(
+        &mut result.diagnostics,
+        &mut suppressions,
+        &non_blank_lines,
+        path,
+    );
+    result.diagnostics.extend(unused_suppressions);
+
+    apply_rule_overrides(&mut result.diagnostics, config);
     result
+}
+
+fn apply_rule_overrides(diagnostics: &mut Vec<Diagnostic>, config: &Config) {
+    let mut kept = Vec::with_capacity(diagnostics.len());
+    let drained = std::mem::take(diagnostics);
+    for mut diagnostic in drained {
+        match config.rule_override(diagnostic.code) {
+            None => kept.push(diagnostic),
+            Some(RuleOverride::Off) => {
+                // Drop the diagnostic entirely. (Config "off" silences a
+                // rule globally; in-source suppressions only mark.)
+            }
+            Some(RuleOverride::Level(level)) => {
+                diagnostic.severity = level;
+                kept.push(diagnostic);
+            }
+        }
+    }
+    *diagnostics = kept;
 }
 
 fn validate_balanced_delimiters(path: &Path, tokens: &[Token]) -> Vec<Diagnostic> {
@@ -616,9 +654,92 @@ mod tests {
         fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join(format!("model{suffix}"));
         fs::write(&path, text).expect("write temp model");
-        let result = validate_native(&path, strict);
+        let result = validate_native(&path, strict, &Config::default());
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         result
+    }
+
+    #[test]
+    fn suppression_silences_duplicate_member() {
+        let result = validate_temp(
+            "package P { part def Engine; part def Engine; // sysml-validate: disable=SYSML041\n}",
+            ".sysml",
+            false,
+        );
+        // Batch C: suppressed diagnostics are KEPT in the list, marked
+        // with .suppression. They are excluded from error_count and from
+        // the exit-code decision (proven via result.ok()).
+        let sysml041: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "SYSML041")
+            .collect();
+        assert_eq!(sysml041.len(), 1);
+        assert!(sysml041[0].is_suppressed());
+        assert!(result.ok(), "suppressed errors must not fail the run");
+        assert_eq!(result.error_count(), 0);
+        assert_eq!(result.suppressed_count(), 1);
+    }
+
+    #[test]
+    fn unused_suppression_emits_sysml050() {
+        let result = validate_temp(
+            "package P { // sysml-validate: disable=SYSML041\n  part def Engine; }",
+            ".sysml",
+            false,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML050"),
+            "expected SYSML050; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn config_promotes_warning_to_error() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = env::temp_dir().join(format!("sysml_validate_promo_{unique}"));
+        fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("model.sysml");
+        fs::write(&path, "package P { part engine :> Missing; }").expect("write");
+        let mut config = Config::default();
+        config
+            .rules
+            .insert("SYSML040".into(), "error".into());
+        let result = validate_native(&path, true, &config);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&dir);
+        let promoted = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "SYSML040")
+            .expect("expected SYSML040");
+        assert_eq!(promoted.severity, Severity::Error);
+    }
+
+    #[test]
+    fn config_off_drops_rule() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = env::temp_dir().join(format!("sysml_validate_off_{unique}"));
+        fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join("model.sysml");
+        fs::write(&path, "package P { part def Engine; part def Engine; }").expect("write");
+        let mut config = Config::default();
+        config.rules.insert("SYSML041".into(), "off".into());
+        let result = validate_native(&path, false, &config);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&dir);
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML041"),
+            "SYSML041 should be silenced; got: {:?}",
+            result.diagnostics
+        );
     }
 }

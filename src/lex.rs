@@ -1,6 +1,8 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::diag::{Diagnostic, Position, Severity};
+use crate::suppress::{parse_directive, Suppression};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TokenKind {
@@ -36,6 +38,16 @@ pub struct Scanner<'a> {
     line: usize,
     column: usize,
     diagnostics: Vec<Diagnostic>,
+    suppressions: Vec<Suppression>,
+    non_blank_lines: BTreeSet<usize>,
+}
+
+#[derive(Debug, Default)]
+pub struct ScanResult {
+    pub tokens: Vec<Token>,
+    pub diagnostics: Vec<Diagnostic>,
+    pub suppressions: Vec<Suppression>,
+    pub non_blank_lines: Vec<usize>,
 }
 
 impl<'a> Scanner<'a> {
@@ -47,10 +59,12 @@ impl<'a> Scanner<'a> {
             line: 1,
             column: 1,
             diagnostics: Vec::new(),
+            suppressions: Vec::new(),
+            non_blank_lines: BTreeSet::new(),
         }
     }
 
-    pub fn scan(mut self) -> (Vec<Token>, Vec<Diagnostic>) {
+    pub fn scan(mut self) -> ScanResult {
         let mut tokens = Vec::new();
         while !self.at_end() {
             let character = self.peek();
@@ -61,9 +75,21 @@ impl<'a> Scanner<'a> {
                 '\n' => self.advance_line(),
                 '/' if self.peek_next() == '/' => self.scan_line_comment(),
                 '/' if self.peek_next() == '*' => self.scan_block_comment(),
-                '"' | '\'' => tokens.push(self.scan_quoted()),
-                c if c.is_ascii_alphabetic() || c == '_' => tokens.push(self.scan_identifier()),
-                c if c.is_ascii_digit() => tokens.push(self.scan_number()),
+                '"' | '\'' => {
+                    let token = self.scan_quoted();
+                    self.mark_non_blank(token.line);
+                    tokens.push(token);
+                }
+                c if c.is_ascii_alphabetic() || c == '_' => {
+                    let token = self.scan_identifier();
+                    self.mark_non_blank(token.line);
+                    tokens.push(token);
+                }
+                c if c.is_ascii_digit() => {
+                    let token = self.scan_number();
+                    self.mark_non_blank(token.line);
+                    tokens.push(token);
+                }
                 c if c.is_control() => {
                     self.diagnostics.push(Diagnostic::new(
                         Severity::Error,
@@ -77,10 +103,23 @@ impl<'a> Scanner<'a> {
                     ));
                     self.advance();
                 }
-                _ => tokens.push(self.scan_symbol_or_operator()),
+                _ => {
+                    let token = self.scan_symbol_or_operator();
+                    self.mark_non_blank(token.line);
+                    tokens.push(token);
+                }
             }
         }
-        (tokens, self.diagnostics)
+        ScanResult {
+            tokens,
+            diagnostics: self.diagnostics,
+            suppressions: self.suppressions,
+            non_blank_lines: self.non_blank_lines.into_iter().collect(),
+        }
+    }
+
+    fn mark_non_blank(&mut self, line: usize) {
+        self.non_blank_lines.insert(line);
     }
 
     fn scan_identifier(&mut self) -> Token {
@@ -171,8 +210,28 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_line_comment(&mut self) {
+        let comment_line = self.line;
+        let comment_column = self.column;
+        self.advance();
+        self.advance();
+        let mut body = String::new();
         while !self.at_end() && self.peek() != '\n' {
-            self.advance();
+            body.push(self.advance());
+        }
+        if let Some(parse_result) = parse_directive(comment_line, comment_column, &body) {
+            match parse_result {
+                Ok(suppression) => self.suppressions.push(suppression),
+                Err(error) => self.diagnostics.push(Diagnostic::new(
+                    Severity::Warning,
+                    "SYSML060",
+                    error.message,
+                    self.path,
+                    Some(Position {
+                        line: error.line,
+                        column: error.column,
+                    }),
+                )),
+            }
         }
     }
 

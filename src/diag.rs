@@ -31,6 +31,12 @@ pub struct Diagnostic {
     pub message: String,
     pub path: PathBuf,
     pub position: Option<Position>,
+    /// `None` = active. `Some(justification)` = suppressed by a source-
+    /// inline directive (kept in the diagnostic list so SARIF can emit
+    /// `suppressions[].kind="inSource"`; filtered out of text/JSON by
+    /// default and excluded from the build-failing error and warning
+    /// counts).
+    pub suppression: Option<String>,
 }
 
 impl Diagnostic {
@@ -47,7 +53,12 @@ impl Diagnostic {
             message: message.into(),
             path: path.to_path_buf(),
             position,
+            suppression: None,
         }
+    }
+
+    pub fn is_suppressed(&self) -> bool {
+        self.suppression.is_some()
     }
 
     /// Compute a stable per-diagnostic fingerprint for SARIF
@@ -147,17 +158,30 @@ impl ValidationResult {
         }
     }
 
+    /// Count of build-failing errors. Suppressed diagnostics are excluded
+    /// because the whole point of suppression is to mute the failure.
     pub fn error_count(&self) -> usize {
         self.diagnostics
             .iter()
-            .filter(|diagnostic| diagnostic.severity == Severity::Error)
+            .filter(|diagnostic| {
+                diagnostic.severity == Severity::Error && !diagnostic.is_suppressed()
+            })
             .count()
     }
 
     pub fn warning_count(&self) -> usize {
         self.diagnostics
             .iter()
-            .filter(|diagnostic| diagnostic.severity == Severity::Warning)
+            .filter(|diagnostic| {
+                diagnostic.severity == Severity::Warning && !diagnostic.is_suppressed()
+            })
+            .count()
+    }
+
+    pub fn suppressed_count(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.is_suppressed())
             .count()
     }
 

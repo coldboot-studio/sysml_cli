@@ -1,6 +1,6 @@
 [package]
 name = "sysml-validate"
-version = "0.2.1"
+version = "0.4.0"
 edition = "2021"
 description = "CLI preflight validator for SysML v2 and KerML textual models."
 license = "MIT"
@@ -17,3 +17,7 @@ sha2 = { version = "0.10", default-features = false }
 # US-108: enforce --timeout on the official backend without writing our own
 # cross-platform child-process polling loop. Maintained by alexcrichton.
 wait-timeout = "0.2"
+# US-105: sysml-validate.toml config + US-101: SARIF emitter.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = { version = "0.8", default-features = false, features = ["parse"] }

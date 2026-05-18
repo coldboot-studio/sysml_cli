@@ -25,9 +25,11 @@ that invokes the SysML v2 pilot/release tooling.
 cargo build --release
 ```
 
-The binary is in `target/release/sysml-validate(.exe)`. Runtime dependencies
-are limited to `sha2` (diagnostic fingerprints) and `wait-timeout` (official-
-backend timeout enforcement).
+The binary is in `target/release/sysml-validate(.exe)`. Runtime dependencies:
+`sha2` (diagnostic fingerprints), `wait-timeout` (official-backend timeout
+enforcement), `serde` + `serde_json` (SARIF and baseline loading), and `toml`
+(configuration file). The glob matcher and JUnit XML emitter are
+hand-written and dependency-free.
 
 ## Usage
 
@@ -36,7 +38,20 @@ Validate files or directories:
 ```powershell
 sysml-validate validate .\model.sysml
 sysml-validate validate .\sysml .\kerml --format json
+sysml-validate validate .\sysml --ci             # shortcut for --format sarif
+sysml-validate validate .\sysml --format junit   # Jenkins / GitLab pipelines
 ```
+
+`--format sarif` emits SARIF 2.1.0 — the lingua franca for GitHub Advanced
+Security, GitLab Ultimate, Iron Bank, SonarQube, and Azure DevOps. Every
+SARIF result carries a `partialFingerprints.diagnosticHash/v1` value
+suitable for baseline diff and deduplication, plus a `suppressions[]`
+marker (`kind: "inSource"`) for any diagnostic silenced by an inline
+directive.
+
+`--format junit` emits Maven Surefire-compatible XML. Each diagnostic
+becomes a `<testcase>`; errors render as `<failure>`, warnings as
+`<system-out>` (or `<error>` under `--fail-on-warning`).
 
 Delegate to the official backend. `{file}` is replaced with each model path.
 The argument list is shell-style tokenized (single quotes, double quotes,
@@ -56,6 +71,79 @@ Fail the run on warnings (useful in strict CI gates):
 ```powershell
 sysml-validate validate .\model.sysml --strict --fail-on-warning
 ```
+
+## Configuration
+
+`sysml-validate.toml` in the working directory or any ancestor is loaded
+automatically. CLI flags always override config values. Use `--config <path>`
+for an explicit file or `--no-config` to skip discovery entirely.
+
+```toml
+# sysml-validate.toml
+project_root = "."
+default_format = "sarif"
+default_strict = true
+default_fail_on_warning = false
+
+# Glob patterns. Supports *, **, and ?. Path separators are normalized
+# across Windows and POSIX. Include is an allowlist; exclude is applied
+# after include.
+include = ["src/**/*.sysml", "src/**/*.kerml"]
+exclude = ["**/target/**", "**/generated/**"]
+
+[rules]
+SYSML040 = "error"   # promote unresolved-reference warning to error
+SYSML041 = "off"     # suppress duplicate-member-in-scope entirely
+```
+
+The loaded config path appears in the JSON and SARIF metadata block, plus
+the text header.
+
+## Baseline / diff mode
+
+Adopt the validator on a large existing project without fixing every
+existing finding up front. Record a SARIF baseline of the current state,
+then in CI only new findings fail the build:
+
+```powershell
+# Record the current findings as the accepted baseline.
+sysml-validate validate .\src --ci --baseline .\baseline.sarif --update-baseline
+
+# Subsequent CI runs: unchanged findings have baselineState=unchanged and
+# don't affect the exit code; new findings do.
+sysml-validate validate .\src --ci --baseline .\baseline.sarif
+```
+
+Both runs emit SARIF with `baselineState` on every result. Findings are
+matched by `(ruleId, diagnosticHash/v1)`, so renaming an unrelated symbol
+does not invalidate the baseline.
+
+## Inline suppressions
+
+Suppress diagnostics with a line comment:
+
+```sysml
+package P {
+  // sysml-validate: disable=SYSML041
+  part def Engine; part def Engine;       // same-line suppression
+
+  // sysml-validate: disable-next-line=SYSML041,SYSML040
+  part wheel :> Missing;
+
+  // sysml-validate: disable=all
+  alias E Engine;                          // every rule on this line
+}
+```
+
+Suppression directives that don't match any diagnostic produce a `SYSML050`
+warning so dead directives can be cleaned up. Invalid directive syntax
+produces `SYSML060`.
+
+Suppressed diagnostics are **kept in the diagnostic list** and marked with
+`suppression`. They appear in SARIF as `results[].suppressions[]` entries
+with `kind: "inSource"` (the SARIF-mandated audit record), and are hidden
+from text and JSON output by default. Pass `--show-suppressed` to display
+them in text/JSON. Suppressed diagnostics never affect the exit code.
 
 Show the release conformance references and model corpora the tool knows
 about:
@@ -145,6 +233,9 @@ Rule codes use the namespace `SYSML0xx`. The current set:
 | `SYSML035` | error   | Missing `;` or `{` terminator. |
 | `SYSML040` | warning | Identifier reference not declared in this file (with `--strict`). |
 | `SYSML041` | error   | Duplicate member name in lexical scope. |
+| `SYSML050` | warning | Suppression directive did not match any diagnostic. |
+| `SYSML060` | warning | Suppression directive has invalid syntax. |
+| `SYSML800` | error   | Configuration file is invalid. |
 | `SYSML900` | error   | `--official-command` parse/setup error. |
 | `SYSML901` | error   | Official validator could not be executed. |
 | `SYSML902` | error   | Official validator returned a non-zero exit status. |
@@ -153,7 +244,7 @@ Rule codes use the namespace `SYSML0xx`. The current set:
 
 When any rule's meaning changes, the rule catalog version in
 [`src/report.rs`](src/report.rs) is bumped so consumers can gate baselines.
-Current rule catalog version: **0.2.0**.
+Current rule catalog version: **0.3.0**.
 
 ## Scope
 

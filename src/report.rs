@@ -1,14 +1,20 @@
 use std::fmt::Write as _;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::baseline::Baseline;
 use crate::diag::ValidationResult;
+use crate::junit;
+use crate::sarif;
 
 /// Rule catalog version. Bump when the meaning of any SYSML* rule code
 /// changes, when codes are added, or when codes are removed. Consumers can
 /// gate their baselines on this value.
 ///
 /// 0.2.0: added SYSML904 (official-backend timeout).
-pub const RULE_CATALOG_VERSION: &str = "0.2.0";
+/// 0.3.0: added SYSML050 (unused suppression), SYSML060 (invalid
+///        suppression directive), SYSML800 (invalid config file).
+pub const RULE_CATALOG_VERSION: &str = "0.3.0";
 
 pub struct RunMetadata {
     pub tool_name: &'static str,
@@ -20,6 +26,8 @@ pub struct RunMetadata {
     pub strict: bool,
     pub fail_on_warning: bool,
     pub format: &'static str,
+    pub config_path: Option<String>,
+    pub baseline_path: Option<String>,
 }
 
 impl RunMetadata {
@@ -28,6 +36,8 @@ impl RunMetadata {
         strict: bool,
         fail_on_warning: bool,
         format: &'static str,
+        config_path: Option<String>,
+        baseline_path: Option<String>,
     ) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -43,11 +53,49 @@ impl RunMetadata {
             strict,
             fail_on_warning,
             format,
+            config_path,
+            baseline_path,
         }
     }
 }
 
-pub fn print_text_results(results: &[ValidationResult], metadata: &RunMetadata) {
+pub fn print_sarif_results(
+    results: &[ValidationResult],
+    metadata: &RunMetadata,
+    command_line: &str,
+    project_root: Option<&Path>,
+    baseline: Option<&Baseline>,
+    exit_code: i32,
+) -> String {
+    let end = format_rfc3339_utc(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    );
+    let document = sarif::emit(
+        results,
+        metadata,
+        command_line,
+        exit_code,
+        &end,
+        project_root,
+        baseline,
+    );
+    println!("{document}");
+    document
+}
+
+pub fn print_junit_results(results: &[ValidationResult], fail_on_warning: bool) {
+    let document = junit::emit(results, fail_on_warning);
+    print!("{document}");
+}
+
+pub fn print_text_results(
+    results: &[ValidationResult],
+    metadata: &RunMetadata,
+    show_suppressed: bool,
+) {
     println!(
         "{} {} (rules {}) backend={} strict={} fail-on-warning={} at {}",
         metadata.tool_name,
@@ -58,40 +106,69 @@ pub fn print_text_results(results: &[ValidationResult], metadata: &RunMetadata) 
         metadata.fail_on_warning,
         metadata.timestamp_utc,
     );
+    if let Some(path) = &metadata.config_path {
+        println!("  config: {path}");
+    }
+    if let Some(path) = &metadata.baseline_path {
+        println!("  baseline: {path}");
+    }
     for result in results {
         let status = if result.ok() { "OK" } else { "FAIL" };
         println!("{status} {}", result.path.display());
         for diagnostic in &result.diagnostics {
+            if diagnostic.is_suppressed() && !show_suppressed {
+                continue;
+            }
             let location = diagnostic
                 .position
                 .as_ref()
                 .map(|position| format!(":{}:{}", position.line, position.column))
                 .unwrap_or_default();
+            let suppression_marker = if diagnostic.is_suppressed() {
+                " [suppressed]"
+            } else {
+                ""
+            };
             println!(
-                "  {} {}{} {}",
+                "  {} {}{}{} {}",
                 diagnostic.severity.as_str().to_ascii_uppercase(),
                 diagnostic.code,
                 location,
+                suppression_marker,
                 diagnostic.message
             );
         }
     }
     let errors: usize = results.iter().map(ValidationResult::error_count).sum();
     let warnings: usize = results.iter().map(ValidationResult::warning_count).sum();
+    let suppressed: usize = results.iter().map(ValidationResult::suppressed_count).sum();
     println!(
-        "\nValidated {} file(s): {} error(s), {} warning(s).",
+        "\nValidated {} file(s): {} error(s), {} warning(s), {} suppressed.",
         results.len(),
         errors,
-        warnings
+        warnings,
+        suppressed,
     );
 }
 
-pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) {
+pub fn print_json_results(
+    results: &[ValidationResult],
+    metadata: &RunMetadata,
+    show_suppressed: bool,
+) {
     let mut output = String::new();
     output.push_str("{\n");
+    let config_path_field = match &metadata.config_path {
+        Some(path) => format!(", \"config_path\": \"{}\"", json_escape(path)),
+        None => String::new(),
+    };
+    let baseline_path_field = match &metadata.baseline_path {
+        Some(path) => format!(", \"baseline_path\": \"{}\"", json_escape(path)),
+        None => String::new(),
+    };
     write!(
         output,
-        "  \"metadata\": {{\n    \"tool\": {{\"name\": \"{}\", \"version\": \"{}\"}},\n    \"rule_catalog\": {{\"version\": \"{}\"}},\n    \"invocation\": {{\"timestamp_utc\": \"{}\", \"timestamp_epoch_seconds\": {}, \"backend\": \"{}\", \"strict\": {}, \"fail_on_warning\": {}, \"format\": \"{}\"}}\n  }},\n",
+        "  \"metadata\": {{\n    \"tool\": {{\"name\": \"{}\", \"version\": \"{}\"}},\n    \"rule_catalog\": {{\"version\": \"{}\"}},\n    \"invocation\": {{\"timestamp_utc\": \"{}\", \"timestamp_epoch_seconds\": {}, \"backend\": \"{}\", \"strict\": {}, \"fail_on_warning\": {}, \"format\": \"{}\"{}{}}}\n  }},\n",
         json_escape(metadata.tool_name),
         json_escape(metadata.tool_version),
         json_escape(metadata.rule_catalog_version),
@@ -101,6 +178,8 @@ pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) 
         metadata.strict,
         metadata.fail_on_warning,
         json_escape(metadata.format),
+        config_path_field,
+        baseline_path_field,
     )
     .expect("write to String cannot fail");
     output.push_str("  \"results\": [\n");
@@ -108,19 +187,25 @@ pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) 
         if index > 0 {
             output.push_str(",\n");
         }
+        let visible: Vec<&_> = result
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| show_suppressed || !diagnostic.is_suppressed())
+            .collect();
         write!(
             output,
-            "    {{\n      \"path\": \"{}\",\n      \"ok\": {},\n      \"error_count\": {},\n      \"warning_count\": {},\n      \"diagnostics\": [",
+            "    {{\n      \"path\": \"{}\",\n      \"ok\": {},\n      \"error_count\": {},\n      \"warning_count\": {},\n      \"suppressed_count\": {},\n      \"diagnostics\": [",
             json_escape(&result.path.to_string_lossy()),
             result.ok(),
             result.error_count(),
-            result.warning_count()
+            result.warning_count(),
+            result.suppressed_count(),
         )
         .expect("write to String cannot fail");
-        if !result.diagnostics.is_empty() {
+        if !visible.is_empty() {
             output.push('\n');
         }
-        for (diagnostic_index, diagnostic) in result.diagnostics.iter().enumerate() {
+        for (diagnostic_index, diagnostic) in visible.iter().enumerate() {
             if diagnostic_index > 0 {
                 output.push_str(",\n");
             }
@@ -142,9 +227,17 @@ pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) 
                 )
                 .expect("write to String cannot fail");
             }
+            if let Some(reason) = &diagnostic.suppression {
+                write!(
+                    output,
+                    ", \"suppression\": {{\"justification\": \"{}\"}}",
+                    json_escape(reason)
+                )
+                .expect("write to String cannot fail");
+            }
             output.push('}');
         }
-        if !result.diagnostics.is_empty() {
+        if !visible.is_empty() {
             output.push('\n');
             output.push_str("      ");
         }

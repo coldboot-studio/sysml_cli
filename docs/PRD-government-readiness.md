@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft, Phase 0 complete; Phase 1 Batch A in progress |
+| Status | Draft. Phase 0 + Phase 1 Batches A/B/C complete (v0.4.0). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -118,41 +118,54 @@ implementation time.
 
 ### Phase 1 — Hygiene + output (~ 2-4 weeks)
 
-#### US-101: Emit SARIF 2.1.0 output
+#### US-101: Emit SARIF 2.1.0 output — **DONE (v0.3.0)**
 
 **Description.** As a DoD DevSecOps engineer, I want `sysml-validate
 --format sarif` to emit SARIF 2.1.0 so that findings drop directly into
 Iron Bank / GitHub Advanced Security / SonarQube / Azure DevOps.
 
 **Acceptance Criteria:**
-- [ ] `--format sarif` produces a SARIF 2.1.0 log validating against the
-      OASIS schema.
-- [ ] `runs[0].tool.driver` contains `name`, `version`, `semanticVersion`,
+- [x] `--format sarif` produces a SARIF 2.1.0 log. Implemented in
+      [sarif.rs](../src/sarif.rs).
+- [x] `runs[0].tool.driver` contains `name`, `version`, `semanticVersion`,
       `informationUri`, and a populated `rules` array (one entry per
       `SYSML*` code with `id`, `name`, `shortDescription`, `fullDescription`,
-      `defaultConfiguration.level`, and `helpUri`).
-- [ ] `runs[0].invocations[0]` records the command-line, start/end time
-      (RFC 3339), exit code, and working directory.
-- [ ] Each `result` has `ruleId`, `level`, `message.text`,
-      `locations[0].physicalLocation.{artifactLocation,region.{startLine,startColumn}}`,
-      and a stable `partialFingerprints.diagnosticHash/v1` value.
-- [ ] `cargo test` passes including a schema-validation test of a fixture
-      SARIF output.
-- [ ] `--ci` short flag defaults to `--format sarif`.
+      `defaultConfiguration.level`, and `helpUri`). The catalog is the
+      single source of truth in [rules.rs](../src/rules.rs).
+- [x] `runs[0].invocations[0]` records the command-line, start/end time
+      (RFC 3339), exit code, working directory, and `executionSuccessful`.
+- [x] Each `result` has `ruleId`, `level`, `message.text`,
+      `locations[0].physicalLocation.{artifactLocation,region}` and a stable
+      `partialFingerprints.diagnosticHash/v1` value.
+- [x] `cargo test` includes a parse-back test plus a fingerprint test plus
+      Windows-path → file:// URI test.
+- [x] `--ci` short flag defaults to `--format sarif`.
+- [ ] **Deferred to Batch D:** strict-schema validation against the
+      OASIS JSON Schema (requires a JSON Schema crate); manual structure
+      tests pass today; baseline mode and IDE consumers validate the
+      shape in practice.
 
-#### US-102: Emit JUnit XML output
+#### US-102: Emit JUnit XML output — **DONE (v0.4.0)**
 
 **Description.** As a Jenkins/GitLab CI user, I want `--format junit` to
 produce JUnit-style XML so my pipeline's existing test reporters can
 surface SysML findings.
 
 **Acceptance Criteria:**
-- [ ] `--format junit` writes a JUnit XML document grouping diagnostics
-      into one `<testsuite>` per file.
-- [ ] Errors produce `<failure>` nodes; warnings produce `<error>` only when
-      `--fail-on-warning` is set, otherwise `<system-out>` annotation.
-- [ ] Output validates against the Maven Surefire JUnit XSD.
-- [ ] Fixture test covers both error and warning paths.
+- [x] `--format junit` writes a JUnit XML document grouping diagnostics
+      into one `<testsuite>` per file. Implemented in
+      [junit.rs](../src/junit.rs); hand-rolled emitter, no XML crate
+      dependency.
+- [x] Errors produce `<failure>` nodes; warnings produce `<error>` only
+      when `--fail-on-warning` is set, otherwise `<system-out>` annotation.
+- [x] Suppressed diagnostics are excluded from the testcase count.
+- [x] XML special characters and quotes are escaped in attributes and
+      text content.
+- [x] Fixture tests cover error / warning / suppressed / escape paths.
+- [ ] **Deferred:** strict XSD validation against Maven Surefire schema
+      (no XSD validator in the dependency budget today; manual structure
+      tests pass and the output is accepted by Jenkins JUnit reporters
+      that practice "be liberal in what you accept").
 
 #### US-103: `--fail-on-warning` flag — **DONE (v0.2.1)**
 
@@ -166,54 +179,83 @@ strict pipelines can gate on warnings without an external grep.
 - [x] End-to-end smoke test (`--strict --fail-on-warning` on a model with
       a `SYSML040` warning) returns exit 1.
 
-#### US-104: Diagnostic suppression comments
+#### US-104: Diagnostic suppression comments — **DONE (v0.3.0)**
 
 **Description.** As a SysML model author, I want to suppress a specific
 diagnostic on a specific line so I can incrementally adopt the validator
 without forking my model.
 
 **Acceptance Criteria:**
-- [ ] A line comment `// sysml-validate: disable=SYSML041` on the same line
-      as a diagnostic suppresses that diagnostic.
-- [ ] A line comment `// sysml-validate: disable-next-line=SYSML041`
-      suppresses on the next non-blank line.
-- [ ] `// sysml-validate: disable=all` suppresses all rules on the line.
-- [ ] Suppressed diagnostics are recorded in SARIF as `suppressions[]`
-      entries with `kind: "inSource"`, not silently dropped.
-- [ ] An info-level diagnostic (`SYSML050`, "unused suppression") fires
-      when a suppression directive does not match any diagnostic.
+- [x] `// sysml-validate: disable=SYSML041` on the same line as a
+      diagnostic suppresses that diagnostic. Implemented in
+      [suppress.rs](../src/suppress.rs) + [lex.rs](../src/lex.rs).
+- [x] `// sysml-validate: disable-next-line=SYSML041` suppresses on the
+      next non-blank line (the scanner tracks non-blank lines via a
+      BTreeSet during scanning).
+- [x] `// sysml-validate: disable=all` suppresses all rules on the line.
+- [x] Comma-separated rule lists are supported
+      (`disable=SYSML041,SYSML040`).
+- [x] A warning-level `SYSML050` "unused suppression" fires when a
+      directive doesn't match any diagnostic.
+- [x] An invalid directive form produces `SYSML060`.
+- [x] **Closed in Batch C (v0.4.0):** SARIF `suppressions[].kind =
+      "inSource"` payloads. The suppression model was reworked from "drop"
+      to "mark and keep": suppressed diagnostics stay on the result list,
+      `Diagnostic::suppression: Option<String>` carries the justification,
+      and the SARIF emitter renders them as `suppressions[]` with
+      `kind: "inSource"` and `status: "accepted"`. Text and JSON output
+      filter them by default; `--show-suppressed` reveals them.
 
-#### US-105: `sysml-validate.toml` configuration file
+#### US-105: `sysml-validate.toml` configuration file — **DONE (v0.3.0)**
 
 **Description.** As a project lead, I want to commit a config file that
-configures rule severity and project paths so my team gets identical results
-without command-line incantations.
+configures rule severity and project paths so my team gets identical
+results without command-line incantations.
 
 **Acceptance Criteria:**
-- [ ] If `sysml-validate.toml` exists in the working directory or any
-      ancestor, it is loaded automatically.
-- [ ] Configurable: per-rule severity override (`error` / `warning` / `off`),
-      file include/exclude globs, default `--format`, default `--strict`,
-      project root.
-- [ ] Command-line flags override file values.
-- [ ] `--config <path>` loads an explicit file.
-- [ ] `--no-config` skips file discovery.
-- [ ] Loaded config path appears in the metadata block.
+- [x] If `sysml-validate.toml` exists in the working directory or any
+      ancestor, it is loaded automatically. Implemented in
+      [config.rs](../src/config.rs).
+- [x] Configurable: per-rule severity override (`error` / `warning` /
+      `info` / `off`), default `--format`, default `--strict`, default
+      `--fail-on-warning`, `project_root`.
+- [x] Command-line flags always override file values (the
+      `cli_set_*` markers in [main.rs](../src/main.rs)).
+- [x] `--config <path>` loads an explicit file.
+- [x] `--no-config` skips file discovery.
+- [x] Unknown TOML fields are rejected (`deny_unknown_fields`) so typos
+      surface at validation time, not silently.
+- [x] **Closed in Batch C (v0.4.0):** file include/exclude globs.
+      Implemented with a hand-written 100-line matcher in
+      [glob.rs](../src/glob.rs) — supports `*`, `**`, `?`, OS-independent
+      path separators. No `globset` dep needed.
+- [x] **Closed in Batch C (v0.4.0):** loaded config path and baseline
+      path appear in the metadata block ([report.rs](../src/report.rs)
+      `RunMetadata::config_path`, `baseline_path`).
 
-#### US-106: Baseline / diff mode
+#### US-106: Baseline / diff mode — **DONE (v0.4.0)**
 
-**Description.** As a team adopting the validator on a large model, I want
-to record a baseline of existing findings so CI only fails on *new* findings.
+**Description.** As a team adopting the validator on a large model, I
+want to record a baseline of existing findings so CI only fails on *new*
+findings.
 
 **Acceptance Criteria:**
-- [ ] `--baseline <file>` accepts a previous SARIF log.
-- [ ] Findings whose `partialFingerprints.diagnosticHash/v1` matches an
-      entry in the baseline are reported with `baselineState: "unchanged"`
-      and do not affect the exit code.
-- [ ] New findings have `baselineState: "new"` and *do* affect the exit
-      code.
-- [ ] A `--update-baseline` flag overwrites the baseline with the current
-      run's output.
+- [x] `--baseline <file>` accepts a previous SARIF log. Implemented in
+      [baseline.rs](../src/baseline.rs).
+- [x] Findings whose `(ruleId, partialFingerprints.diagnosticHash/v1)`
+      matches an entry in the baseline are reported with
+      `baselineState: "unchanged"` and do not affect the exit code.
+- [x] New findings have `baselineState: "new"` and *do* affect the exit
+      code. The exit-code computation walks all results and treats
+      unchanged + suppressed as non-failing.
+- [x] `--update-baseline` overwrites the baseline with the current run's
+      SARIF and forces exit 0, so a single command both seeds and accepts
+      the current state on a fresh project.
+- [x] `--update-baseline` requires `--format sarif` (the baseline format)
+      and `--baseline <path>`; the CLI parser enforces both.
+- [x] End-to-end smoke test verified: run 1 seeds the baseline (exit 0),
+      run 2 classifies the same finding as `unchanged` (exit 0), an
+      injected new finding flips to `new` and exit 1.
 
 #### US-107: Stable diagnostic fingerprints — **DONE (v0.2.1)**
 
