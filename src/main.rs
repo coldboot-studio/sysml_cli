@@ -50,6 +50,7 @@ struct ValidateArgs {
     paths: Vec<PathBuf>,
     format: OutputFormat,
     strict: bool,
+    fail_on_warning: bool,
     backend: BackendKind,
     official_command: Option<String>,
     timeout_seconds: u64,
@@ -102,13 +103,20 @@ fn run_validate(args: &[String]) -> Result<i32, String> {
         results.push(result);
     }
 
-    let metadata = RunMetadata::capture(args.backend.as_str(), args.strict, args.format.as_str());
+    let metadata = RunMetadata::capture(
+        args.backend.as_str(),
+        args.strict,
+        args.fail_on_warning,
+        args.format.as_str(),
+    );
     match args.format {
         OutputFormat::Text => print_text_results(&results, &metadata),
         OutputFormat::Json => print_json_results(&results, &metadata),
     }
 
-    Ok(if results.iter().any(|result| !result.ok()) {
+    let any_errors = results.iter().any(|result| !result.ok());
+    let any_warnings = results.iter().any(|result| result.warning_count() > 0);
+    Ok(if any_errors || (args.fail_on_warning && any_warnings) {
         1
     } else {
         0
@@ -169,6 +177,7 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
     let mut paths = Vec::new();
     let mut format = OutputFormat::Text;
     let mut strict = false;
+    let mut fail_on_warning = false;
     let mut backend = BackendKind::Native;
     let mut official_command = None;
     let mut timeout_seconds = DEFAULT_OFFICIAL_TIMEOUT_SECONDS;
@@ -181,6 +190,7 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
                 format = parse_format(args.get(index).ok_or("--format requires a value")?)?;
             }
             "--strict" => strict = true,
+            "--fail-on-warning" => fail_on_warning = true,
             "--backend" => {
                 index += 1;
                 backend = match args.get(index).map(String::as_str) {
@@ -233,6 +243,7 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
         paths,
         format,
         strict,
+        fail_on_warning,
         backend,
         official_command,
         timeout_seconds,
@@ -296,14 +307,17 @@ fn print_validate_help() {
     println!();
     println!("Options:");
     println!("  --format text|json");
-    println!("  --strict");
+    println!("  --strict                        warn on unresolved identifiers");
+    println!("  --fail-on-warning               exit 1 if any warning is produced");
     println!("  --backend native|official");
     println!("  --official-command <argv template containing {{file}}>");
-    println!("  --timeout <seconds>             (official backend only)");
+    println!("  --timeout <seconds>             official backend only (default 60)");
     println!();
     println!("--official-command is tokenized with shell-style quoting (single and");
     println!("double quotes, backslash escapes inside double quotes) and invoked");
-    println!("with positional argv. No shell process is spawned.");
+    println!("with positional argv. No shell process is spawned. If the child");
+    println!("exceeds --timeout it is terminated and a SYSML904 diagnostic is");
+    println!("emitted.");
 }
 
 fn print_grammar_help() {
@@ -321,7 +335,7 @@ mod tests {
     #[test]
     fn validate_results_propagate_through_text_output() {
         // Sanity check that the binary's wiring compiles together.
-        let metadata = RunMetadata::capture("native", false, "text");
+        let metadata = RunMetadata::capture("native", false, false, "text");
         let results: Vec<diag::ValidationResult> = Vec::new();
         print_text_results(&results, &metadata);
     }

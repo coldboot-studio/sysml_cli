@@ -6,7 +6,9 @@ use crate::diag::ValidationResult;
 /// Rule catalog version. Bump when the meaning of any SYSML* rule code
 /// changes, when codes are added, or when codes are removed. Consumers can
 /// gate their baselines on this value.
-pub const RULE_CATALOG_VERSION: &str = "0.1.0";
+///
+/// 0.2.0: added SYSML904 (official-backend timeout).
+pub const RULE_CATALOG_VERSION: &str = "0.2.0";
 
 pub struct RunMetadata {
     pub tool_name: &'static str,
@@ -16,11 +18,17 @@ pub struct RunMetadata {
     pub timestamp_epoch_seconds: u64,
     pub backend: &'static str,
     pub strict: bool,
+    pub fail_on_warning: bool,
     pub format: &'static str,
 }
 
 impl RunMetadata {
-    pub fn capture(backend: &'static str, strict: bool, format: &'static str) -> Self {
+    pub fn capture(
+        backend: &'static str,
+        strict: bool,
+        fail_on_warning: bool,
+        format: &'static str,
+    ) -> Self {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default();
@@ -33,6 +41,7 @@ impl RunMetadata {
             timestamp_epoch_seconds: epoch,
             backend,
             strict,
+            fail_on_warning,
             format,
         }
     }
@@ -40,12 +49,13 @@ impl RunMetadata {
 
 pub fn print_text_results(results: &[ValidationResult], metadata: &RunMetadata) {
     println!(
-        "{} {} (rules {}) backend={} strict={} at {}",
+        "{} {} (rules {}) backend={} strict={} fail-on-warning={} at {}",
         metadata.tool_name,
         metadata.tool_version,
         metadata.rule_catalog_version,
         metadata.backend,
         metadata.strict,
+        metadata.fail_on_warning,
         metadata.timestamp_utc,
     );
     for result in results {
@@ -81,7 +91,7 @@ pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) 
     output.push_str("{\n");
     write!(
         output,
-        "  \"metadata\": {{\n    \"tool\": {{\"name\": \"{}\", \"version\": \"{}\"}},\n    \"rule_catalog\": {{\"version\": \"{}\"}},\n    \"invocation\": {{\"timestamp_utc\": \"{}\", \"timestamp_epoch_seconds\": {}, \"backend\": \"{}\", \"strict\": {}, \"format\": \"{}\"}}\n  }},\n",
+        "  \"metadata\": {{\n    \"tool\": {{\"name\": \"{}\", \"version\": \"{}\"}},\n    \"rule_catalog\": {{\"version\": \"{}\"}},\n    \"invocation\": {{\"timestamp_utc\": \"{}\", \"timestamp_epoch_seconds\": {}, \"backend\": \"{}\", \"strict\": {}, \"fail_on_warning\": {}, \"format\": \"{}\"}}\n  }},\n",
         json_escape(metadata.tool_name),
         json_escape(metadata.tool_version),
         json_escape(metadata.rule_catalog_version),
@@ -89,6 +99,7 @@ pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) 
         metadata.timestamp_epoch_seconds,
         json_escape(metadata.backend),
         metadata.strict,
+        metadata.fail_on_warning,
         json_escape(metadata.format),
     )
     .expect("write to String cannot fail");
@@ -115,9 +126,10 @@ pub fn print_json_results(results: &[ValidationResult], metadata: &RunMetadata) 
             }
             write!(
                 output,
-                "        {{\"severity\": \"{}\", \"code\": \"{}\", \"message\": \"{}\", \"path\": \"{}\"",
+                "        {{\"severity\": \"{}\", \"code\": \"{}\", \"fingerprint\": \"{}\", \"message\": \"{}\", \"path\": \"{}\"",
                 diagnostic.severity.as_str(),
                 diagnostic.code,
+                diagnostic.fingerprint(None),
                 json_escape(&diagnostic.message),
                 json_escape(&diagnostic.path.to_string_lossy())
             )

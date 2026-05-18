@@ -1,6 +1,6 @@
 [package]
 name = "sysml-validate"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "CLI preflight validator for SysML v2 and KerML textual models."
 license = "MIT"
@@ -9,3 +9,11 @@ repository = "https://github.com/Systems-Modeling/SysML-v2-Release"
 [[bin]]
 name = "sysml-validate"
 path = "src/main.rs"
+
+[dependencies]
+# US-107: stable diagnostic fingerprints. RustCrypto sha2 is the standard
+# choice and has a FIPS-validated variant available later.
+sha2 = { version = "0.10", default-features = false }
+# US-108: enforce --timeout on the official backend without writing our own
+# cross-platform child-process polling loop. Maintained by alexcrichton.
+wait-timeout = "0.2"

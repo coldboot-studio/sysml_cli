@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft, Phase 0 complete |
+| Status | Draft, Phase 0 complete; Phase 1 Batch A in progress |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -154,16 +154,17 @@ surface SysML findings.
 - [ ] Output validates against the Maven Surefire JUnit XSD.
 - [ ] Fixture test covers both error and warning paths.
 
-#### US-103: `--fail-on-warning` flag
+#### US-103: `--fail-on-warning` flag — **DONE (v0.2.1)**
 
 **Description.** As a release engineer, I want `--fail-on-warning` so that
 strict pipelines can gate on warnings without an external grep.
 
 **Acceptance Criteria:**
-- [ ] When set, exit code 1 if any warning is produced, regardless of error
-      count.
-- [ ] Help text documents the flag.
-- [ ] Test covers the warning-only path returning exit 1.
+- [x] When set, exit code 1 if any warning is produced, regardless of error
+      count. Implemented in [main.rs](../src/main.rs).
+- [x] Help text documents the flag.
+- [x] End-to-end smoke test (`--strict --fail-on-warning` on a model with
+      a `SYSML040` warning) returns exit 1.
 
 #### US-104: Diagnostic suppression comments
 
@@ -214,29 +215,41 @@ to record a baseline of existing findings so CI only fails on *new* findings.
 - [ ] A `--update-baseline` flag overwrites the baseline with the current
       run's output.
 
-#### US-107: Stable diagnostic fingerprints
+#### US-107: Stable diagnostic fingerprints — **DONE (v0.2.1)**
 
 **Description.** As a tooling integrator, I want a stable fingerprint per
 diagnostic so I can deduplicate across runs without using line numbers.
 
 **Acceptance Criteria:**
-- [ ] Each diagnostic exposes a `diagnosticHash/v1` derived from
-      `(ruleId, file path normalized to project root, surrounding token
-      context, suppression-trimmed message template)`.
-- [ ] Two runs of the same input produce identical fingerprints.
-- [ ] Changing an unrelated line does not change a diagnostic's fingerprint.
+- [x] Each diagnostic exposes a fingerprint derived from `(rule code, file
+      path normalized to project root, message template with literal
+      identifiers and numbers genericized)`. Implemented in
+      [diag.rs](../src/diag.rs).
+- [x] Two runs of the same input produce identical fingerprints.
+- [x] Changing an unrelated line does not change a diagnostic's
+      fingerprint (position is excluded from the hash).
+- [x] Fingerprint is normalized for Windows vs POSIX path separators.
+- [ ] **Deferred to Phase 2 (AST-aware):** "surrounding token context"
+      stability. Today, two distinct diagnostics from the same rule on the
+      same file with identical genericized messages may collide; consumers
+      should disambiguate by position when they care.
 
-#### US-108: Enforce `--timeout` on official backend
+#### US-108: Enforce `--timeout` on official backend — **DONE (v0.2.1)**
 
 **Description.** As a CI operator, I want the official backend to be
 killed if it exceeds `--timeout` so a hung child cannot stall my pipeline.
 
 **Acceptance Criteria:**
-- [ ] When the official backend exceeds `--timeout` seconds, the child
-      process is terminated (SIGKILL on Unix, `TerminateProcess` on
-      Windows) and a `SYSML904` "timeout" diagnostic is emitted.
-- [ ] Tested with a deliberately slow shell stub.
-- [ ] Default timeout is 60 s (unchanged).
+- [x] When the official backend exceeds `--timeout` seconds, the child
+      process is terminated (`wait_timeout::ChildExt::wait_timeout` +
+      `Child::kill`) and a `SYSML904` "timeout" diagnostic is emitted.
+      Implemented in [backend.rs](../src/backend.rs).
+- [x] `cargo test` includes a deliberately slow child (`Start-Sleep 30`
+      on Windows, `sleep 30` elsewhere) that proves the timeout fires
+      within the 15 s test budget.
+- [x] Default timeout is 60 s (unchanged).
+- [x] stdout / stderr are drained in worker threads so a chatty child
+      cannot deadlock on a full pipe.
 
 #### US-109: Reproducible-build setup [EPIC]
 

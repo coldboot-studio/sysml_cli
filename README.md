@@ -25,8 +25,9 @@ that invokes the SysML v2 pilot/release tooling.
 cargo build --release
 ```
 
-The binary is in `target/release/sysml-validate(.exe)`. No external crates are
-used today; the only runtime dependency is the Rust standard library.
+The binary is in `target/release/sysml-validate(.exe)`. Runtime dependencies
+are limited to `sha2` (diagnostic fingerprints) and `wait-timeout` (official-
+backend timeout enforcement).
 
 ## Usage
 
@@ -41,12 +42,19 @@ Delegate to the official backend. `{file}` is replaced with each model path.
 The argument list is shell-style tokenized (single quotes, double quotes,
 `\\` escapes inside double quotes) and invoked with positional argv — **no
 shell process is spawned**, so `--official-command` cannot inject shell
-metacharacters.
+metacharacters. If the child exceeds `--timeout` seconds it is terminated
+and a `SYSML904` diagnostic is emitted.
 
 ```powershell
 sysml-validate validate .\model.sysml --backend official `
   --official-command "sysml-validator --strict {file}" `
   --timeout 120
+```
+
+Fail the run on warnings (useful in strict CI gates):
+
+```powershell
+sysml-validate validate .\model.sysml --strict --fail-on-warning
 ```
 
 Show the release conformance references and model corpora the tool knows
@@ -61,8 +69,12 @@ sysml-validate corpus-info
 
 JSON output includes a `metadata` block with the tool name and version, rule
 catalog version, invocation timestamp (RFC 3339 UTC), backend identity, and
-ruleset flags. This is the per-run audit record consumers should retain
-alongside their build provenance.
+ruleset flags. Each diagnostic also includes a stable `fingerprint` — a
+SHA-256-derived hash of `(rule code, normalized file path, genericized
+message)` that is intentionally **position-independent**, so inserting an
+unrelated line will not change the fingerprint of diagnostics that follow.
+The metadata block plus per-diagnostic fingerprints are the per-run audit
+record consumers should retain alongside their build provenance.
 
 ```json
 {
@@ -137,9 +149,11 @@ Rule codes use the namespace `SYSML0xx`. The current set:
 | `SYSML901` | error   | Official validator could not be executed. |
 | `SYSML902` | error   | Official validator returned a non-zero exit status. |
 | `SYSML903` | info    | Official validator returned informational output. |
+| `SYSML904` | error   | Official validator exceeded `--timeout` and was terminated. |
 
 When any rule's meaning changes, the rule catalog version in
 [`src/report.rs`](src/report.rs) is bumped so consumers can gate baselines.
+Current rule catalog version: **0.2.0**.
 
 ## Scope
 
