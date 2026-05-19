@@ -536,17 +536,36 @@ project.
       reporting the diff. The project-wide infrastructure for this
       now exists; the harness itself is the natural next batch.
 
-#### US-204: Project manifest support
+#### US-204: Project manifest support — **PARTIALLY DONE (v0.8.0); KPAR deferred**
 
 **Description.** As a SysML v2 project lead, I want a `.project.json`
-file (Sysand-compatible) at the project root so all my files are validated
-together.
+file (Sysand-compatible) at the project root so all my files are
+validated together.
 
 **Acceptance Criteria:**
-- [ ] If a `.project.json` is present at or above the working directory,
-      it defines the project root and dependency set for resolution.
-- [ ] If a `.kpar` archive is referenced, it is read as a dependency.
-- [ ] `--project-root <path>` overrides discovery.
+- [x] `.project.json` discovery walks up from the working directory.
+      Implemented in [`manifest.rs`](../src/manifest.rs).
+- [x] Manifest fields parsed: `name`, `version`, `description`, `root`,
+      `dependencies[].{name,version,source}`, plus an open `meta`
+      passthrough.
+- [x] `root` field defines the source root, taking precedence over
+      `sysml-validate.toml`'s `project_root` field, which in turn
+      takes precedence over the config-file directory.
+- [x] Project name and manifest path appear in text and JSON metadata
+      blocks (`project:` / `"project"` / `manifest_path`).
+- [x] `deny_unknown_fields` rejects malformed manifests at parse time.
+- [x] 6 unit tests covering discovery, ascent, `root` resolution,
+      dependencies parsing, no-manifest fallback, and unknown-field
+      rejection.
+- [ ] **Deferred to Phase 2.x:** KPAR archive loading as a dependency
+      source. KPAR is a zip-format archive per KerML §10; loading it
+      requires a zip dep and a non-trivial archive walker. Sysand's
+      dependency-graph resolution model also evolves; pinning to it
+      now risks reworking it later.
+- [ ] **Deferred to Batch K (real parser):** using manifest
+      `dependencies[]` entries to seed cross-project name resolution.
+      Today the manifest is discovered and surfaced; the dependencies
+      field is parsed but not yet consulted by the resolver.
 
 #### US-205: Port the Pilot's named validator rules [EPIC] — **PARTIALLY DONE (v0.7.0); deeper rules pending US-201**
 
