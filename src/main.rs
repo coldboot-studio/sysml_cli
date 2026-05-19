@@ -8,6 +8,7 @@ mod info;
 mod junit;
 mod lex;
 mod library;
+mod manifest;
 mod project;
 mod report;
 mod rules;
@@ -26,6 +27,7 @@ use config::{Config, ConfigDiscovery, LoadedConfig};
 use glob::Pattern;
 use info::{print_corpus_json, print_corpus_text, print_grammar_json, print_grammar_text};
 use library::LibraryLoader;
+use manifest::LoadedManifest;
 use project::ProjectIndex;
 use report::{
     print_json_results, print_junit_results, print_plain_results, print_sarif_results,
@@ -136,6 +138,7 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
         ConfigDiscoveryArg::Disabled => ConfigDiscovery::Disabled,
     };
     let loaded = config::load(&working_directory, discovery)?;
+    let manifest = manifest::discover(&working_directory)?;
 
     apply_config_defaults(&loaded, &mut args)?;
 
@@ -150,10 +153,14 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
         None => None,
     };
 
-    let project_root = loaded
-        .config
-        .project_root
+    // Project-root resolution order:
+    //   1. Sysand .project.json `root` field, if a manifest was found
+    //   2. sysml-validate.toml `project_root` field
+    //   3. Directory containing the discovered config file
+    let project_root = manifest
+        .source_root
         .clone()
+        .or_else(|| loaded.config.project_root.clone())
         .or_else(|| loaded.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)));
     let files = discover_files(&args.paths, &loaded.config, project_root.as_deref())?;
     if files.is_empty() {
@@ -210,7 +217,7 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
         compute_exit_code(&results, &args, baseline.as_ref(), project_root.as_deref())
     };
 
-    let metadata = RunMetadata::capture(
+    let mut metadata = RunMetadata::capture(
         args.backend.as_str(),
         args.strict,
         args.fail_on_warning,
@@ -223,6 +230,13 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
             .as_ref()
             .map(|path| path.display().to_string()),
     );
+    if manifest.manifest_path.is_some() {
+        metadata.project_label = Some(manifest.display_label());
+        metadata.project_manifest_path = manifest
+            .manifest_path
+            .as_ref()
+            .map(|path| path.display().to_string());
+    }
 
     match args.format {
         OutputFormat::Text => print_text_results(&results, &metadata, args.show_suppressed),

@@ -31,6 +31,8 @@ pub struct RunMetadata {
     pub format: &'static str,
     pub config_path: Option<String>,
     pub baseline_path: Option<String>,
+    pub project_label: Option<String>,
+    pub project_manifest_path: Option<String>,
 }
 
 impl RunMetadata {
@@ -58,6 +60,8 @@ impl RunMetadata {
             format,
             config_path,
             baseline_path,
+            project_label: None,
+            project_manifest_path: None,
         }
     }
 }
@@ -149,6 +153,12 @@ pub fn print_text_results(
         metadata.fail_on_warning,
         metadata.timestamp_utc,
     );
+    if let Some(label) = &metadata.project_label {
+        println!("  project: {label}");
+    }
+    if let Some(path) = &metadata.project_manifest_path {
+        println!("  manifest: {path}");
+    }
     if let Some(path) = &metadata.config_path {
         println!("  config: {path}");
     }
@@ -209,9 +219,17 @@ pub fn print_json_results(
         Some(path) => format!(", \"baseline_path\": \"{}\"", json_escape(path)),
         None => String::new(),
     };
+    let project_field = match &metadata.project_label {
+        Some(label) => format!(", \"project\": \"{}\"", json_escape(label)),
+        None => String::new(),
+    };
+    let manifest_field = match &metadata.project_manifest_path {
+        Some(path) => format!(", \"manifest_path\": \"{}\"", json_escape(path)),
+        None => String::new(),
+    };
     write!(
         output,
-        "  \"metadata\": {{\n    \"tool\": {{\"name\": \"{}\", \"version\": \"{}\"}},\n    \"rule_catalog\": {{\"version\": \"{}\"}},\n    \"invocation\": {{\"timestamp_utc\": \"{}\", \"timestamp_epoch_seconds\": {}, \"backend\": \"{}\", \"strict\": {}, \"fail_on_warning\": {}, \"format\": \"{}\"{}{}}}\n  }},\n",
+        "  \"metadata\": {{\n    \"tool\": {{\"name\": \"{}\", \"version\": \"{}\"}},\n    \"rule_catalog\": {{\"version\": \"{}\"}},\n    \"invocation\": {{\"timestamp_utc\": \"{}\", \"timestamp_epoch_seconds\": {}, \"backend\": \"{}\", \"strict\": {}, \"fail_on_warning\": {}, \"format\": \"{}\"{}{}{}{}}}\n  }},\n",
         json_escape(metadata.tool_name),
         json_escape(metadata.tool_version),
         json_escape(metadata.rule_catalog_version),
@@ -223,6 +241,8 @@ pub fn print_json_results(
         json_escape(metadata.format),
         config_path_field,
         baseline_path_field,
+        project_field,
+        manifest_field,
     )
     .expect("write to String cannot fail");
     output.push_str("  \"results\": [\n");
