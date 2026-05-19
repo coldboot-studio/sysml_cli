@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F (US-202), G (US-203), G.5 (typed-usage `:`), H (US-205 scoped structural rules)** complete (v0.7.0). Phase 2 continues with US-204 (project manifest), US-205 deeper rules requiring AST, and US-207 (differential test). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-J** complete (v0.9.0). Phase 2 continues with US-201 (real parser, Batch K) and US-205 deeper AST-dependent rules (Batch L). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -636,18 +636,45 @@ diagnostics.
 - [ ] Reuses the parser and resolver from US-201 / US-203.
 - [ ] Smoke-tested against a VS Code reference extension.
 
-#### US-207: Differential test corpus
+#### US-207: Differential test corpus — **PARTIALLY DONE (v0.9.0); side-by-side Pilot run pending US-201**
 
-**Description.** As a maintainer, I want a CI job that compares
-`sysml-validate`'s findings to the Pilot's on the public corpora named in
-`corpus-info`.
+**Description.** As a maintainer, I want a regression harness that
+runs `sysml-validate` against the OMG-curated SysML v2 corpora and
+fails when finding counts drift, with categorized causes.
 
-**Acceptance Criteria:**
-- [ ] CI job clones the corpus repos (network-allowed in CI only),
-      validates with both implementations, and reports diffs.
-- [ ] Diffs are categorized into: false positive, false negative, known
-      divergence (with rationale).
-- [ ] Pass criterion: zero unjustified diffs.
+**Acceptance Criteria (v0.9.0 scope):**
+- [x] Integration test [`tests/differential.rs`](../tests/differential.rs)
+      runs the release binary against
+      `vendor/sysml-v2-release/sysml/src/examples/` (95 files) and
+      `vendor/sysml-v2-release/sysml/src/validation/` (56 files),
+      compares the histogram of `SYSMLxxx` codes against an in-source
+      baseline, and fails on drift.
+- [x] Marked `#[ignore]` so the default `cargo test` loop stays fast;
+      run explicitly with
+      `cargo test --test differential -- --ignored`.
+- [x] [`docs/differential-corpus-report.md`](differential-corpus-report.md)
+      documents the methodology, current state, and per-rule
+      false-positive analysis. Updated each release.
+- [x] False-positive root causes categorized: metadata-tag declaration
+      shorthand (Arrowhead pattern), inherited-member redefinition
+      indistinguishable from self-reference, unqualified-name
+      collisions across nested scopes.
+- [x] Drift-on-fix protocol: when counts intentionally change, update
+      the baseline constants in `tests/differential.rs` AND
+      `docs/differential-corpus-report.md` in the same commit. Test
+      message guides the user to do this.
+- [ ] **Pending US-201:** true side-by-side diff against the OMG Pilot
+      Implementation's findings on the same inputs. Today's harness
+      is "presumptive": curated examples are treated as known-good
+      and any finding is presumptively a false positive attributable
+      to documented token-level limitations. When the Pilot becomes
+      runnable in this environment (Java + Maven + JVM), the harness
+      flips from presumptive to literal diff.
+- [ ] **Pending CI integration:** the test runs locally; the GitHub
+      Actions workflow doesn't invoke it yet. Adding a `nightly:
+      cargo test --test differential -- --ignored` job is a one-line
+      addition to [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+      once the baseline is stable.
 
 ### Phase 3 — Government acceptance package (~ 1-3 months, mostly docs)
 

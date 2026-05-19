@@ -423,9 +423,18 @@ fn validate_specialization_structure(
     let declared_in_file = collect_declared_names(tokens);
 
     let mut cursor = 0;
+    // last_decl is the most recently seen identifier WITHIN THE CURRENT
+    // statement. It resets on `;` and `{` so identifiers from earlier
+    // statements don't leak forward and cause cross-statement false
+    // positives in the self-reference check.
     let mut last_decl: Option<&Token> = None;
     while cursor < tokens.len() {
         let token = &tokens[cursor];
+        if matches!(token.value.as_str(), ";" | "{" | "}") {
+            last_decl = None;
+            cursor += 1;
+            continue;
+        }
         if token.kind == TokenKind::Identifier {
             last_decl = Some(token);
             cursor += 1;
@@ -452,23 +461,36 @@ fn validate_specialization_structure(
             .unwrap_or(target_qualified.as_str());
 
         // SYSML212 / SYSML213: self-reference.
-        if let Some(decl) = last_decl {
-            if decl.value == target_leaf {
-                let code: &'static str = if is_specialization { "SYSML212" } else { "SYSML213" };
-                let verb = if is_specialization {
-                    "specialize"
-                } else {
-                    "redefine"
-                };
-                diagnostics.push(Diagnostic::new(
-                    Severity::Error,
-                    code,
-                    format!("Feature '{}' cannot {verb} itself.", decl.value),
-                    path,
-                    Some(target_token.position()),
-                ));
-                cursor += 1;
-                continue;
+        //
+        // Important: only treat this as self-reference if the target is
+        // UNqualified. `attribute mass :> ISQ::mass` declares a new
+        // `mass` that specializes a differently-namespaced `ISQ::mass`;
+        // those are not the same feature and must not fire SYSML212.
+        // Same logic applies to redefinitions of library members.
+        let target_is_qualified = target_qualified.contains("::");
+        if !target_is_qualified {
+            if let Some(decl) = last_decl {
+                if decl.value == target_leaf {
+                    let code: &'static str =
+                        if is_specialization { "SYSML212" } else { "SYSML213" };
+                    let verb = if is_specialization {
+                        "specialize"
+                    } else {
+                        "redefine"
+                    };
+                    diagnostics.push(Diagnostic::new(
+                        Severity::Warning,
+                        code,
+                        format!(
+                            "Feature '{}' appears to {verb} itself. This is often legitimate (redefinition of an inherited member with the same name) but is occasionally a typo. AST-aware checking will tighten this in a future release.",
+                            decl.value
+                        ),
+                        path,
+                        Some(target_token.position()),
+                    ));
+                    cursor += 1;
+                    continue;
+                }
             }
         }
 
@@ -1069,29 +1091,51 @@ mod tests {
     }
 
     #[test]
-    fn self_specialization_is_error() {
+    fn self_specialization_is_warning() {
+        // Batch J: demoted from error to warning because the same token
+        // pattern matches both real self-reference bugs AND the
+        // legitimate redefinition-of-inherited-member case.
         let result = validate_temp(
             "package P { part def Engine :> Engine; }",
             ".sysml",
             false,
         );
-        assert!(
-            result.diagnostics.iter().any(|d| d.code == "SYSML212"),
-            "expected SYSML212; got: {:?}",
-            result.diagnostics
-        );
+        let hit = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "SYSML212")
+            .expect("expected SYSML212");
+        assert_eq!(hit.severity, Severity::Warning);
     }
 
     #[test]
-    fn self_redefinition_is_error() {
+    fn self_redefinition_is_warning() {
         let result = validate_temp(
             "package P { part def Engine { feature thrust :>> thrust; } }",
             ".sysml",
             false,
         );
+        let hit = result
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "SYSML213")
+            .expect("expected SYSML213");
+        assert_eq!(hit.severity, Severity::Warning);
+    }
+
+    #[test]
+    fn last_decl_resets_on_statement_boundary() {
+        // Regression for Batch J: `attribute redefines Foo` declares no
+        // new identifier, so the stale last_decl from an earlier
+        // statement must not leak in and produce a false SYSML213.
+        let result = validate_temp(
+            "package P { part def Foo; attribute redefines Foo; }",
+            ".sysml",
+            false,
+        );
         assert!(
-            result.diagnostics.iter().any(|d| d.code == "SYSML213"),
-            "expected SYSML213; got: {:?}",
+            !result.diagnostics.iter().any(|d| d.code == "SYSML213"),
+            "stale last_decl leaked; got: {:?}",
             result.diagnostics
         );
     }

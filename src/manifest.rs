@@ -23,6 +23,7 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(dead_code)] // Several fields are surfaced via the manifest API or reserved for follow-up batches.
 pub struct ProjectManifest {
     pub name: Option<String>,
     pub version: Option<String>,
@@ -43,6 +44,7 @@ pub struct ProjectManifest {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[allow(dead_code)] // Populated by serde; consumed by KPAR-loading work in a follow-up batch.
 pub struct DependencyRef {
     pub name: String,
     pub version: Option<String>,

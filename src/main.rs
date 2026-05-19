@@ -27,7 +27,6 @@ use config::{Config, ConfigDiscovery, LoadedConfig};
 use glob::Pattern;
 use info::{print_corpus_json, print_corpus_text, print_grammar_json, print_grammar_text};
 use library::LibraryLoader;
-use manifest::LoadedManifest;
 use project::ProjectIndex;
 use report::{
     print_json_results, print_junit_results, print_plain_results, print_sarif_results,

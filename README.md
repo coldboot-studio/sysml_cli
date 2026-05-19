@@ -14,7 +14,16 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.7.0 ships **structural rules over specialization /
+> **Status.** v0.9.0 ships **Sysand project manifest discovery**
+> (US-204) and a **differential-corpus regression harness** (US-207)
+> that runs against the OMG `examples` (95 files) and `validation`
+> (56 files) corpora and fails on count drift. See
+> [`docs/differential-corpus-report.md`](docs/differential-corpus-report.md)
+> for methodology, current state, and per-rule false-positive analysis.
+> Side-by-side comparison against the OMG Pilot Implementation itself
+> awaits Batch K (US-201 real parser).
+>
+> v0.7.0 shipped **structural rules over specialization /
 > redefinition** (US-205, scoped): `SYSML210`/`SYSML211` flag
 > unresolved `:>` and `:>>` targets as errors (not warnings),
 > `SYSML212`/`SYSML213` flag self-reference, and `SYSML220` detects
