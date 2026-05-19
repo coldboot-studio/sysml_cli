@@ -15,19 +15,29 @@ Given:
 - a published release artifact `sysml-validate-<target>` from a GitHub
   Release,
 - the git revision the release tag points to,
+- **all submodules at the revisions recorded in that git revision**
+  (notably [`vendor/sysml-v2-release/`](../vendor/sysml-v2-release/),
+  which embeds the OMG SysML v2 standard library at release tag
+  `2026-04`, commit `9baca5908ca28b53da085de69336fde48420ea8f`),
 - the Rust toolchain pinned in [`rust-toolchain.toml`](../rust-toolchain.toml),
 - the same build target triple,
 
 an independent build using the recipe below MUST produce a binary with
 the same SHA-256 digest as the published artifact.
 
+Note: the library is embedded into the binary via `include_dir!` at
+compile time. Two builds against different upstream library revisions
+will produce different binaries even if the rest of the source is
+identical. The submodule pin is part of the reproducibility contract.
+
 ## The recipe
 
 ```bash
-# 1. Clone and check out the release tag.
-git clone https://github.com/<owner>/<repo> sysml-validate
+# 1. Clone WITH submodules, then check out the release tag.
+git clone --recurse-submodules https://github.com/<owner>/<repo> sysml-validate
 cd sysml-validate
-git checkout v0.4.0       # the tag of interest
+git checkout v0.5.0       # the tag of interest
+git submodule update --init --recursive   # if --recurse-submodules was omitted
 
 # 2. Confirm the toolchain pin. cargo will install the exact version
 #    listed in rust-toolchain.toml on first invocation.

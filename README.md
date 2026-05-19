@@ -14,27 +14,40 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** Preflight validator with the Phase 1 government-acceptance
-> envelope shipped (v0.4.0): SARIF 2.1.0 / JUnit XML / JSON / text output,
-> SBOM + Sigstore + GPG + SLSA L3 provenance via the
-> [release workflow](.github/workflows/release.yml), reproducible
-> [release profile](Cargo.toml), pinned [Rust toolchain](rust-toolchain.toml),
-> and the security policy / offline contract / threat model below. See
-> [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md)
-> for the roadmap to a real conformance-grade validator (Phase 2: real
-> parser, library loading, name resolution) and the optional DO-330
-> TQL-5 qualification kit (Phase 3).
+> **Status.** v0.5.0 ships the **embedded SysML v2 standard library**
+> (OMG release `2026-04`, EPL-2.0, vendored at
+> [`vendor/sysml-v2-release/`](vendor/) as a git submodule). The
+> validator now resolves identifiers like `Part`, `ISQ::Mass`, and
+> `Parts::Part` against 94 library files indexing ~4,190 declared
+> symbols — the dominant source of false positives in `--strict` mode
+> is eliminated. See `sysml-validate library-info`.
+>
+> The Phase 1 government-acceptance envelope is intact (v0.4.0):
+> SARIF / JUnit / JSON / text / plain output, SBOM + Sigstore + GPG +
+> SLSA L3 via the [release workflow](.github/workflows/release.yml),
+> reproducible builds, pinned toolchain, security / offline / threat
+> model docs. Phase 2 continues with cross-file name resolution
+> (US-203) and ported Pilot rules (US-205); see
+> [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md).
 
 ## Install
 
 ```powershell
+git clone --recurse-submodules https://github.com/<owner>/sysml-cli
+cd sysml-cli
 cargo build --release
 ```
 
-The binary is in `target/release/sysml-validate(.exe)`. Runtime dependencies:
-`sha2` (diagnostic fingerprints), `wait-timeout` (official-backend timeout
-enforcement), `serde` + `serde_json` (SARIF and baseline loading), and `toml`
-(configuration file). The glob matcher and JUnit XML emitter are
+If you cloned without `--recurse-submodules`, run
+`git submodule update --init --recursive` once before building — the
+build embeds the vendored SysML v2 standard library at
+[`vendor/sysml-v2-release/sysml.library/`](vendor/) into the binary.
+
+The binary is in `target/release/sysml-validate(.exe)`. Runtime
+dependencies: `sha2` (diagnostic fingerprints), `wait-timeout`
+(official-backend timeout enforcement), `serde` + `serde_json` (SARIF
+and baseline loading), `toml` (configuration file), `include_dir`
+(embedded library). The glob matcher and JUnit XML emitter are
 hand-written and dependency-free.
 
 ## Usage
@@ -46,7 +59,13 @@ sysml-validate validate .\model.sysml
 sysml-validate validate .\sysml .\kerml --format json
 sysml-validate validate .\sysml --ci             # shortcut for --format sarif
 sysml-validate validate .\sysml --format junit   # Jenkins / GitLab pipelines
+sysml-validate validate .\sysml --format plain   # screen-reader / grep-friendly
 ```
+
+`--format plain` produces GCC-style one-diagnostic-per-line output
+(`path:line:column: severity: code: message`) with no header and no
+decoration. See [`docs/accessibility.md`](docs/accessibility.md) for the
+Section 508 / VPAT 2.5 conformance statement.
 
 `--format sarif` emits SARIF 2.1.0 — the lingua franca for GitHub Advanced
 Security, GitLab Ultimate, Iron Bank, SonarQube, and Azure DevOps. Every
@@ -151,12 +170,22 @@ with `kind: "inSource"` (the SARIF-mandated audit record), and are hidden
 from text and JSON output by default. Pass `--show-suppressed` to display
 them in text/JSON. Suppressed diagnostics never affect the exit code.
 
-Show the release conformance references and model corpora the tool knows
-about:
+Show the release conformance references, model corpora, and embedded
+standard library:
 
 ```powershell
 sysml-validate grammar-info
 sysml-validate corpus-info
+sysml-validate library-info             # 94 files, ~4,190 declared symbols
+sysml-validate library-info --format json
+```
+
+Override the embedded library with an on-disk copy (e.g., to test
+against a pre-release OMG library):
+
+```powershell
+sysml-validate validate .\model.sysml --strict `
+  --library-path C:\path\to\sysml.library
 ```
 
 ## Output
@@ -237,7 +266,7 @@ Rule codes use the namespace `SYSML0xx`. The current set:
 | `SYSML033` | error   | Usage missing a declared name or specialization. |
 | `SYSML034` | error   | Definition missing a name. |
 | `SYSML035` | error   | Missing `;` or `{` terminator. |
-| `SYSML040` | warning | Identifier reference not declared in this file (with `--strict`). |
+| `SYSML040` | warning | Identifier reference not declared in this file AND not found in the embedded SysML v2 standard library (with `--strict`). |
 | `SYSML041` | error   | Duplicate member name in lexical scope. |
 | `SYSML050` | warning | Suppression directive did not match any diagnostic. |
 | `SYSML060` | warning | Suppression directive has invalid syntax. |
@@ -282,6 +311,8 @@ contexts. Authoritative statements:
   defended and explicitly out of scope.
 - [`docs/REPRODUCING.md`](docs/REPRODUCING.md) — byte-identical rebuild
   recipe for independent verification.
+- [`docs/accessibility.md`](docs/accessibility.md) — Section 508
+  conformance, draft VPAT 2.5 (Rev 508), `--format plain` contract.
 
 ## License
 

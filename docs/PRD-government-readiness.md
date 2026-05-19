@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. Phase 0 + Phase 1 Batches A/B/C/D complete (v0.4.0). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batch F (US-202 library loader)** complete (v0.5.0). Phase 2 continues with US-203 (name resolution) → US-205 (Pilot rule port). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -409,16 +409,31 @@ tool into an ATO boundary.
       validator→consumer) with mitigations and residual risks, plus an
       "out of scope" section.
 
-#### US-114: Section 508 polish
+#### US-114: Section 508 polish — **DONE (v0.4.0)**
 
 **Description.** As a federal user using a screen reader, I want the
 default CLI output to be readable without ANSI / color decoration.
 
 **Acceptance Criteria:**
-- [ ] `NO_COLOR=1` and `--format plain` produce ANSI-free output.
-- [ ] No color-only signaling: severity is always carried by the literal
-      `ERROR` / `WARNING` / `INFO` text in addition to any color.
-- [ ] `docs/accessibility.md` includes a draft VPAT 2.5 (Rev 508).
+- [x] `--format plain` produces ANSI-free output in the GCC-style
+      `path:line:column: severity: code: message` format that screen
+      readers and IDEs already understand. Implemented in
+      [report.rs](../src/report.rs).
+- [x] `NO_COLOR=1` is honored — trivially today since zero ANSI escape
+      sequences are emitted in any output format, audited by grep over
+      `src/`. Contract documented for the day TTY-aware color is added.
+- [x] No color-only signaling: severity is always carried by the
+      literal text `error` / `warning` / `info` (lowercase in `plain`,
+      uppercase in `text`). Verified by code audit and end-to-end
+      smoke test.
+- [x] [`docs/accessibility.md`](accessibility.md) includes a draft
+      VPAT 2.5 (Revised 508) covering Chapter 3 functional performance
+      criteria (302.1–302.9), Chapter 5 software requirements (502, 503,
+      504), Chapter 6 support documentation (601–603), and a WCAG 2.0
+      Level A/AA cross-reference for the applicable criteria.
+- [ ] **Operator action before RFP submission:** review the draft VPAT
+      with an accessibility consultant, sign and date, publish as a
+      versioned artifact alongside releases.
 
 ### Phase 2 — Become a real validator (~ 2-4 months)
 
@@ -439,21 +454,43 @@ structures, not a token-pattern approximation.
 - [ ] At least 90% of the OMG Pilot's `kerml/` and `sysml/` example
       directories parse without error.
 
-#### US-202: Library loader [EPIC]
+#### US-202: Library loader [EPIC] — **DONE (v0.5.0)**
 
 **Description.** As a SysML v2 model author, I want my model to validate
 against `ISQ::Mass`, `SI::kg`, `Geometry::Point`, etc. so I can use the
 standard library.
 
 **Acceptance Criteria:**
-- [ ] Vendor the SysML v2 standard library `.sysml` / `.kerml` files from
-      the OMG Release repository, pinned by release tag.
-- [ ] `sysml-validate library-info` lists loaded library packages,
-      element counts, source release tag.
-- [ ] A loaded library provides a search scope for qualified-name
-      resolution.
-- [ ] `--library-path <path>` augments the default library scope with
-      user-provided packages.
+- [x] Vendored upstream `Systems-Modeling/SysML-v2-Release` at git
+      submodule [`vendor/sysml-v2-release/`](../vendor/sysml-v2-release/),
+      pinned to release tag `2026-04` (commit
+      `9baca5908ca28b53da085de69336fde48420ea8f`). License: EPL-2.0;
+      preserved in [`NOTICE.md`](../NOTICE.md).
+- [x] [`include_dir!`](../src/library.rs) embeds the full
+      `sysml.library/` tree (94 files, ~1.7 MB of textual library
+      source) into the binary at compile time. The released binary is
+      self-contained — no submodule needed at runtime, no network call.
+- [x] `sysml-validate library-info` prints source description (with
+      pinned release tag), file count, declaration count, and the full
+      list of indexed package names. Supports `--format text|json`.
+- [x] The loader builds two indices: `qualified_names` (`Parts::Part`,
+      `Items::Item`, ...) and `unqualified_names` (`Part`, `Item`, ...).
+      Both consulted in `validate_reference_candidates` for `--strict`.
+- [x] `--library-path <dir>` overrides the embedded library with an
+      on-disk copy. Useful for testing pre-release library revisions
+      against existing models.
+- [x] End-to-end verified: a model using `:> Part` and
+      `:> Parts::Part` no longer produces SYSML040 false positives;
+      a model using `:> CompletelyMadeUp` still does.
+- [x] [`REPRODUCING.md`](REPRODUCING.md) and
+      [`NOTICE.md`](../NOTICE.md) document the pinned library revision
+      so submodule drift becomes a reproducibility failure rather than
+      a silent behavioral change.
+- [ ] **Deferred to US-203 (next batch):** "library provides a search
+      scope for qualified-name resolution" — today the index answers
+      yes/no membership; full resolution (returning the resolved
+      declaration site, walking specialization chains across packages)
+      is the natural follow-up.
 
 #### US-203: Qualified-name resolution [EPIC]
 

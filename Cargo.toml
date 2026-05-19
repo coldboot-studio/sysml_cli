@@ -1,6 +1,6 @@
 [package]
 name = "sysml-validate"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 description = "CLI preflight validator for SysML v2 and KerML textual models."
 license = "MIT"
@@ -21,6 +21,11 @@ wait-timeout = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = { version = "0.8", default-features = false, features = ["parse"] }
+# US-202 (Phase 2): embed the OMG SysML v2 standard library at compile
+# time so the validator is self-contained and air-gap-capable. The
+# library source lives at vendor/sysml-v2-release/sysml.library/ as a
+# git submodule pinned to OMG release tag 2026-04 (EPL-2.0).
+include_dir = { version = "0.7", features = ["glob"] }
 
 # Reproducible-build settings (US-109). Single codegen unit and fat LTO
 # produce a single deterministic object; strip removes timestamps and

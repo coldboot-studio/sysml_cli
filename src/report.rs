@@ -91,6 +91,46 @@ pub fn print_junit_results(results: &[ValidationResult], fail_on_warning: bool) 
     print!("{document}");
 }
 
+/// Screen-reader-friendly output (US-114). No metadata header, no decoration,
+/// no color signaling. One diagnostic per line in a deterministic GCC-style
+/// format that screen readers and IDEs already understand:
+///
+/// ```text
+/// <path>:<line>:<column>: <severity>: <code>: <message>
+/// ```
+///
+/// Diagnostics with no position render as `<path>: ...`. Suppressed
+/// diagnostics are excluded unless `--show-suppressed` is set, in which case
+/// they appear with a ` [suppressed]` suffix on the severity field.
+pub fn print_plain_results(results: &[ValidationResult], show_suppressed: bool) {
+    for result in results {
+        for diagnostic in &result.diagnostics {
+            if diagnostic.is_suppressed() && !show_suppressed {
+                continue;
+            }
+            let location = diagnostic
+                .position
+                .as_ref()
+                .map(|position| format!(":{}:{}", position.line, position.column))
+                .unwrap_or_default();
+            let suppression_marker = if diagnostic.is_suppressed() {
+                " [suppressed]"
+            } else {
+                ""
+            };
+            println!(
+                "{}{}: {}{}: {}: {}",
+                diagnostic.path.display(),
+                location,
+                diagnostic.severity.as_str(),
+                suppression_marker,
+                diagnostic.code,
+                diagnostic.message,
+            );
+        }
+    }
+}
+
 pub fn print_text_results(
     results: &[ValidationResult],
     metadata: &RunMetadata,

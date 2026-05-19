@@ -6,6 +6,7 @@ mod glob;
 mod info;
 mod junit;
 mod lex;
+mod library;
 mod report;
 mod rules;
 mod sarif;
@@ -22,14 +23,17 @@ use baseline::Baseline;
 use config::{Config, ConfigDiscovery, LoadedConfig};
 use glob::Pattern;
 use info::{print_corpus_json, print_corpus_text, print_grammar_json, print_grammar_text};
+use library::LibraryLoader;
 use report::{
-    print_json_results, print_junit_results, print_sarif_results, print_text_results, RunMetadata,
+    print_json_results, print_junit_results, print_plain_results, print_sarif_results,
+    print_text_results, RunMetadata,
 };
 use validate::{is_supported_model_path, validate_native};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OutputFormat {
     Text,
+    Plain,
     Json,
     Sarif,
     Junit,
@@ -39,6 +43,7 @@ impl OutputFormat {
     fn as_str(self) -> &'static str {
         match self {
             OutputFormat::Text => "text",
+            OutputFormat::Plain => "plain",
             OutputFormat::Json => "json",
             OutputFormat::Sarif => "sarif",
             OutputFormat::Junit => "junit",
@@ -72,6 +77,7 @@ struct ValidateArgs {
     official_command: Option<String>,
     timeout_seconds: u64,
     config_discovery: ConfigDiscoveryArg,
+    library_path: Option<PathBuf>,
     baseline_path: Option<PathBuf>,
     update_baseline: bool,
     raw_command_line: String,
@@ -105,6 +111,7 @@ fn run(raw_args: &[String]) -> Result<i32, String> {
         Some("validate") => run_validate(&args[1..], raw_args),
         Some("grammar-info") => run_grammar_info(&args[1..]),
         Some("corpus-info") => run_corpus_info(&args[1..]),
+        Some("library-info") => run_library_info(&args[1..]),
         Some("-h") | Some("--help") | None => {
             print_help();
             Ok(0)
@@ -129,6 +136,11 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
 
     apply_config_defaults(&loaded, &mut args)?;
 
+    let library = match &args.library_path {
+        Some(path) => LibraryLoader::from_path(path)?,
+        None => LibraryLoader::embedded(),
+    };
+
     let baseline = match &args.baseline_path {
         Some(path) if path.is_file() => Some(Baseline::load(path)?),
         Some(_) => Some(Baseline::empty()), // --update-baseline on a fresh project
@@ -149,7 +161,7 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
     let mut results = Vec::new();
     for file in files {
         let result = match args.backend {
-            BackendKind::Native => validate_native(&file, args.strict, &loaded.config),
+            BackendKind::Native => validate_native(&file, args.strict, &loaded.config, &library),
             BackendKind::Official => validate_official(
                 &file,
                 args.official_command
@@ -185,6 +197,7 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
 
     match args.format {
         OutputFormat::Text => print_text_results(&results, &metadata, args.show_suppressed),
+        OutputFormat::Plain => print_plain_results(&results, args.show_suppressed),
         OutputFormat::Json => print_json_results(&results, &metadata, args.show_suppressed),
         OutputFormat::Sarif => {
             let document = print_sarif_results(
@@ -298,8 +311,75 @@ fn run_grammar_info(args: &[String]) -> Result<i32, String> {
     match format {
         OutputFormat::Text => print_grammar_text(),
         OutputFormat::Json => print_grammar_json(),
-        OutputFormat::Sarif | OutputFormat::Junit => {
+        OutputFormat::Plain | OutputFormat::Sarif | OutputFormat::Junit => {
             return Err("grammar-info supports only --format text|json".into());
+        }
+    }
+    Ok(0)
+}
+
+fn run_library_info(args: &[String]) -> Result<i32, String> {
+    let mut format = OutputFormat::Text;
+    let mut library_path: Option<PathBuf> = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--format" => {
+                index += 1;
+                format = parse_format(args.get(index).ok_or("--format requires a value")?)?;
+            }
+            "--library-path" => {
+                index += 1;
+                let value = args.get(index).ok_or("--library-path requires a value")?;
+                library_path = Some(PathBuf::from(value));
+            }
+            "-h" | "--help" => {
+                println!("Usage: sysml-validate library-info [--format text|json] [--library-path <dir>]");
+                return Ok(0);
+            }
+            option => return Err(format!("unknown library-info option '{option}'")),
+        }
+        index += 1;
+    }
+
+    let library = match library_path {
+        Some(path) => LibraryLoader::from_path(&path)?,
+        None => LibraryLoader::embedded(),
+    };
+
+    match format {
+        OutputFormat::Text => {
+            println!("Source: {}", library.source_description());
+            println!("Files:  {}", library.file_count());
+            println!("Declarations: {}", library.declaration_count());
+            println!("Packages:");
+            for package in library.package_names() {
+                println!("  {package}");
+            }
+        }
+        OutputFormat::Json => {
+            use std::fmt::Write as _;
+            let mut output = String::from("{\n");
+            write!(
+                output,
+                "  \"source\": \"{}\",\n  \"files\": {},\n  \"declarations\": {},\n  \"packages\": [",
+                report::json_escape(library.source_description()),
+                library.file_count(),
+                library.declaration_count()
+            )
+            .expect("write");
+            let packages: Vec<&str> = library.package_names().collect();
+            for (index, package) in packages.iter().enumerate() {
+                if index > 0 {
+                    output.push_str(", ");
+                }
+                write!(output, "\"{}\"", report::json_escape(package)).expect("write");
+            }
+            output.push_str("]\n}");
+            println!("{output}");
+        }
+        OutputFormat::Plain | OutputFormat::Sarif | OutputFormat::Junit => {
+            return Err("library-info supports only --format text|json".into());
         }
     }
     Ok(0)
@@ -326,7 +406,7 @@ fn run_corpus_info(args: &[String]) -> Result<i32, String> {
     match format {
         OutputFormat::Text => print_corpus_text(),
         OutputFormat::Json => print_corpus_json(),
-        OutputFormat::Sarif | OutputFormat::Junit => {
+        OutputFormat::Plain | OutputFormat::Sarif | OutputFormat::Junit => {
             return Err("corpus-info supports only --format text|json".into());
         }
     }
@@ -346,6 +426,7 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
     let mut official_command = None;
     let mut timeout_seconds = DEFAULT_OFFICIAL_TIMEOUT_SECONDS;
     let mut config_discovery = ConfigDiscoveryArg::Auto;
+    let mut library_path: Option<PathBuf> = None;
     let mut baseline_path: Option<PathBuf> = None;
     let mut update_baseline = false;
     let mut index = 0;
@@ -404,6 +485,11 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
             "--no-config" => {
                 config_discovery = ConfigDiscoveryArg::Disabled;
             }
+            "--library-path" => {
+                index += 1;
+                let value = args.get(index).ok_or("--library-path requires a value")?;
+                library_path = Some(PathBuf::from(value));
+            }
             "--baseline" => {
                 index += 1;
                 let value = args.get(index).ok_or("--baseline requires a value")?;
@@ -454,6 +540,7 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
         official_command,
         timeout_seconds,
         config_discovery,
+        library_path,
         baseline_path,
         update_baseline,
         raw_command_line: String::new(),
@@ -466,6 +553,7 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
 fn parse_format(value: &str) -> Result<OutputFormat, String> {
     match value {
         "text" => Ok(OutputFormat::Text),
+        "plain" => Ok(OutputFormat::Plain),
         "json" => Ok(OutputFormat::Json),
         "sarif" => Ok(OutputFormat::Sarif),
         "junit" => Ok(OutputFormat::Junit),
@@ -540,24 +628,28 @@ fn print_help() {
     println!("sysml-validate {}", env!("CARGO_PKG_VERSION"));
     println!();
     println!("Usage:");
-    println!("  sysml-validate validate <paths> [--format text|json|sarif|junit] [--ci] [--strict] [--fail-on-warning] [--show-suppressed]");
+    println!("  sysml-validate validate <paths> [--format text|plain|json|sarif|junit] [--ci] [--strict] [--fail-on-warning] [--show-suppressed]");
     println!("  sysml-validate validate <paths> --baseline <prior.sarif> [--update-baseline --ci]");
     println!("  sysml-validate validate <paths> --backend official --official-command <template> [--timeout <seconds>]");
     println!("  sysml-validate grammar-info [--format text|json]");
     println!("  sysml-validate corpus-info [--format text|json]");
+    println!("  sysml-validate library-info [--format text|json] [--library-path <dir>]");
 }
 
 fn print_validate_help() {
     println!("Usage: sysml-validate validate <paths> [options]");
     println!();
     println!("Options:");
-    println!("  --format text|json|sarif|junit  output format (default: text)");
+    println!("  --format text|plain|json|sarif|junit  output format (default: text)");
+    println!("                                    'plain' is the screen-reader-friendly");
+    println!("                                    no-decoration variant (see docs/accessibility.md)");
     println!("  --ci                            shortcut for --format sarif");
     println!("  --strict                        warn on unresolved identifiers");
     println!("  --fail-on-warning               exit 1 if any warning is produced");
     println!("  --show-suppressed               include suppressed diagnostics in text/JSON");
     println!("  --config <path>                 explicit config file");
     println!("  --no-config                     skip config-file discovery");
+    println!("  --library-path <dir>            override embedded SysML v2 std library");
     println!("  --baseline <path>               classify findings against a prior SARIF run");
     println!("  --update-baseline               overwrite --baseline with the current run (--ci only)");
     println!("  --backend native|official");
@@ -608,6 +700,7 @@ mod tests {
         assert_eq!(parse_format("sarif").unwrap(), OutputFormat::Sarif);
         assert_eq!(parse_format("junit").unwrap(), OutputFormat::Junit);
         assert_eq!(parse_format("text").unwrap(), OutputFormat::Text);
+        assert_eq!(parse_format("plain").unwrap(), OutputFormat::Plain);
         assert_eq!(parse_format("json").unwrap(), OutputFormat::Json);
     }
 

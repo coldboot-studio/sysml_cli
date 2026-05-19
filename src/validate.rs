@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::config::{Config, RuleOverride};
 use crate::diag::{Diagnostic, Severity, ValidationResult};
 use crate::lex::{Scanner, Token, TokenKind};
+use crate::library::LibraryLoader;
 use crate::suppress::apply_suppressions;
 
 pub fn is_supported_model_path(path: &Path) -> bool {
@@ -15,7 +16,12 @@ pub fn is_supported_model_path(path: &Path) -> bool {
     )
 }
 
-pub fn validate_native(path: &Path, strict: bool, config: &Config) -> ValidationResult {
+pub fn validate_native(
+    path: &Path,
+    strict: bool,
+    config: &Config,
+    library: &LibraryLoader,
+) -> ValidationResult {
     let mut result = ValidationResult::new(path);
     if !is_supported_model_path(path) {
         result.diagnostics.push(Diagnostic::new(
@@ -60,7 +66,7 @@ pub fn validate_native(path: &Path, strict: bool, config: &Config) -> Validation
     if strict {
         result
             .diagnostics
-            .extend(validate_reference_candidates(path, &tokens));
+            .extend(validate_reference_candidates(path, &tokens, library));
     }
 
     // Apply suppressions first so an unused-suppression notice respects
@@ -290,7 +296,11 @@ fn validate_duplicate_scope_members(path: &Path, tokens: &[Token]) -> Vec<Diagno
     diagnostics
 }
 
-fn validate_reference_candidates(path: &Path, tokens: &[Token]) -> Vec<Diagnostic> {
+fn validate_reference_candidates(
+    path: &Path,
+    tokens: &[Token],
+    library: &LibraryLoader,
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let declared: HashSet<String> = tokens
         .iter()
@@ -310,26 +320,65 @@ fn validate_reference_candidates(path: &Path, tokens: &[Token]) -> Vec<Diagnosti
         "references",
         "redefines",
     ];
-    for window in tokens.windows(2) {
+    for (index, window) in tokens.windows(2).enumerate() {
         let marker = &window[0];
         let candidate = &window[1];
-        if reference_markers.contains(&marker.value.as_str())
-            && candidate.kind == TokenKind::Identifier
-            && !declared.contains(&candidate.value)
+        if !reference_markers.contains(&marker.value.as_str())
+            || candidate.kind != TokenKind::Identifier
         {
-            diagnostics.push(Diagnostic::new(
-                Severity::Warning,
-                "SYSML040",
-                format!(
-                    "Reference '{}' is not declared in this file. It may resolve from imports or libraries.",
-                    candidate.value
-                ),
-                path,
-                Some(candidate.position()),
-            ));
+            continue;
         }
+        if declared.contains(&candidate.value) {
+            continue;
+        }
+
+        // Resolve against the standard library. If the candidate is the
+        // leaf of a qualified name (`A::B::Foo`), check the qualified
+        // path; otherwise fall back to the unqualified name index.
+        let qualified = read_qualified_name(tokens, index + 1);
+        let resolved = if qualified.contains("::") {
+            library.contains_qualified(&qualified)
+        } else {
+            library.contains_unqualified(&candidate.value)
+        };
+        if resolved {
+            continue;
+        }
+
+        diagnostics.push(Diagnostic::new(
+            Severity::Warning,
+            "SYSML040",
+            format!(
+                "Reference '{}' is not declared in this file and was not found in the loaded library. It may resolve from a project import.",
+                if qualified.contains("::") { &qualified } else { &candidate.value }
+            ),
+            path,
+            Some(candidate.position()),
+        ));
     }
     diagnostics
+}
+
+/// Read a qualified name starting at `start` (`Foo`, `A::B`, `A::B::C`,
+/// etc.). Stops at the first token that isn't `::` or an identifier.
+fn read_qualified_name(tokens: &[Token], start: usize) -> String {
+    let mut parts = Vec::new();
+    let mut cursor = start;
+    loop {
+        let Some(token) = tokens.get(cursor) else {
+            break;
+        };
+        if token.kind != TokenKind::Identifier {
+            break;
+        }
+        parts.push(token.value.as_str());
+        cursor += 1;
+        if tokens.get(cursor).map(|t| t.value.as_str()) != Some("::") {
+            break;
+        }
+        cursor += 1;
+    }
+    parts.join("::")
 }
 
 fn record_name(
@@ -654,10 +703,50 @@ mod tests {
         fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join(format!("model{suffix}"));
         fs::write(&path, text).expect("write temp model");
-        let result = validate_native(&path, strict, &Config::default());
+        let library = LibraryLoader::embedded();
+        let result = validate_native(&path, strict, &Config::default(), &library);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         result
+    }
+
+    #[test]
+    fn library_resolves_part_reference_in_strict_mode() {
+        // Before US-202: `:> Part` produced a SYSML040 false positive
+        // because `Part` is not declared in the user file. With the
+        // embedded library loaded, `Part` resolves from `Parts::Part`.
+        let result = validate_temp("package P { part engine :> Part; }", ".sysml", true);
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "library should resolve 'Part'; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn library_does_not_resolve_genuinely_missing_reference() {
+        // Negative control: a name that is NOT in the library should
+        // still warn under --strict.
+        let result = validate_temp(
+            "package P { part engine :> CompletelyMadeUpName123; }",
+            ".sysml",
+            true,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "missing name should warn; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn library_resolves_qualified_name() {
+        let result = validate_temp("package P { part engine :> Parts::Part; }", ".sysml", true);
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "library should resolve 'Parts::Part'; got: {:?}",
+            result.diagnostics
+        );
     }
 
     #[test]
@@ -710,7 +799,8 @@ mod tests {
         config
             .rules
             .insert("SYSML040".into(), "error".into());
-        let result = validate_native(&path, true, &config);
+        let library = LibraryLoader::embedded();
+        let result = validate_native(&path, true, &config, &library);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         let promoted = result
@@ -733,7 +823,8 @@ mod tests {
         fs::write(&path, "package P { part def Engine; part def Engine; }").expect("write");
         let mut config = Config::default();
         config.rules.insert("SYSML041".into(), "off".into());
-        let result = validate_native(&path, false, &config);
+        let library = LibraryLoader::embedded();
+        let result = validate_native(&path, false, &config, &library);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         assert!(
