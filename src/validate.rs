@@ -65,6 +65,19 @@ pub fn validate_native(
         .as_ref()
         .map(ast::collect_declared_names)
         .unwrap_or_default();
+    // SYSML100 emission gated behind `--strict` (Batch L). The
+    // tree-sitter-sysml 0.1 grammar is still early-stage and produces
+    // many ERROR nodes on perfectly valid models that exercise mature
+    // SysML v2 features its grammar doesn't yet cover (171 warnings
+    // on the scamp reference model alone). Surfacing those by default
+    // would drown real diagnostics. Strict mode opts in.
+    if strict {
+        if let Some(parse) = ast_parse.as_ref() {
+            result
+                .diagnostics
+                .extend(ast::parse_diagnostics(parse, path));
+        }
+    }
 
     result.diagnostics.extend(scan.diagnostics);
     result
@@ -90,12 +103,17 @@ pub fn validate_native(
 
     // Phase 2 Batch H: structural rules that fire regardless of --strict
     // because they catch errors, not heuristic warnings.
+    let inherited_zones = ast_parse
+        .as_ref()
+        .map(ast::inherited_member_redefinition_zones)
+        .unwrap_or_default();
     result.diagnostics.extend(validate_specialization_structure(
         path,
         &tokens,
         library,
         project,
         &ast_declared_names,
+        &inherited_zones,
     ));
 
     // Apply suppressions first so an unused-suppression notice respects
@@ -443,6 +461,7 @@ fn validate_specialization_structure(
     library: &LibraryLoader,
     project: &ProjectIndex,
     ast_declared: &HashSet<String>,
+    inherited_zones: &[ast::LineRange],
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let mut declared_in_file = collect_declared_names(tokens);
@@ -499,6 +518,19 @@ fn validate_specialization_structure(
         if !target_is_qualified {
             if let Some(decl) = last_decl {
                 if decl.value == target_leaf {
+                    // Batch L: AST-aware suppression. If the position is
+                    // inside the usage_body of a typed `*_usage` (a part
+                    // with a parent type), the matching same-name target
+                    // is the inherited member of the parent, not a real
+                    // self-reference. Skip the diagnostic entirely.
+                    let position_line = target_token.line;
+                    if inherited_zones
+                        .iter()
+                        .any(|zone| zone.contains(position_line))
+                    {
+                        cursor += 1;
+                        continue;
+                    }
                     let code: &'static str =
                         if is_specialization { "SYSML212" } else { "SYSML213" };
                     let verb = if is_specialization {

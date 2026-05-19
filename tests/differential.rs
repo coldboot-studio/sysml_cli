@@ -27,13 +27,14 @@ use std::process::Command;
 /// History:
 ///   v0.9.0  initial: 271 findings; demoted 212/213, fixed qualified-target FPs
 ///   v0.10.0 AST-aware name collection (Batch K) → 110/45/39 SYSML210/213/211
+///   v0.11.0 AST-aware inherited-zone suppression (Batch L) → 213 drops 45→1
 const EXAMPLES_BASELINE: &[(&str, usize)] = &[
     ("SYSML033", 6),
     ("SYSML041", 1),
     ("SYSML210", 110),
     ("SYSML211", 39),
     ("SYSML212", 1),
-    ("SYSML213", 45),
+    ("SYSML213", 1),
     ("SYSML220", 1),
 ];
 
@@ -41,7 +42,6 @@ const EXAMPLES_BASELINE: &[(&str, usize)] = &[
 const VALIDATION_BASELINE: &[(&str, usize)] = &[
     ("SYSML210", 31),
     ("SYSML211", 9),
-    ("SYSML213", 1),
     ("SYSML220", 1),
 ];
 

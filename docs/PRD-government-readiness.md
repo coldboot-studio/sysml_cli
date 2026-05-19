@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-K** complete (v0.10.0). Phase 2 continues with Batch L (deeper AST-aware rules) and Batch M (LSP server). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-L** complete (v0.11.0). Phase 2 continues with Batch M (LSP server). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |

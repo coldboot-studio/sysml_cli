@@ -149,6 +149,71 @@ fn walk_for_declarations(node: Node<'_>, source: &str, names: &mut HashSet<Strin
     }
 }
 
+/// Inclusive line range, 1-based, matching `Position::line`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LineRange {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl LineRange {
+    pub fn contains(self, line: usize) -> bool {
+        line >= self.start && line <= self.end
+    }
+}
+
+/// Collect line-ranges of `usage_body` regions whose enclosing
+/// `*_usage` declares a parent type via `typing_part`. Inside these
+/// regions, `feature x :>> x` (or `:> x`) is overwhelmingly the
+/// legitimate "redefine the inherited member" pattern rather than a
+/// real self-reference bug. The structural validator consults this
+/// list to suppress SYSML212/213 inside such regions.
+pub fn inherited_member_redefinition_zones(result: &ParseResult) -> Vec<LineRange> {
+    let mut zones = Vec::new();
+    let root = result.tree.root_node();
+    walk_for_inherited_zones(root, &mut zones);
+    zones
+}
+
+fn walk_for_inherited_zones(node: Node<'_>, zones: &mut Vec<LineRange>) {
+    // The relevant pattern is `(*_usage (usage_declaration ... typing_part)
+    // (usage_body ...))`. We look at any node whose kind ends with `_usage`
+    // and check whether its declaration has a typing_part. If yes, every
+    // descendant inside its usage_body is in an "inherited zone."
+    let kind = node.kind();
+    if kind.ends_with("_usage") {
+        let mut cursor = node.walk();
+        let mut has_typing = false;
+        let mut body: Option<Node<'_>> = None;
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "usage_declaration" => {
+                    let mut decl_cursor = child.walk();
+                    for grand in child.children(&mut decl_cursor) {
+                        if grand.kind() == "typing_part" {
+                            has_typing = true;
+                        }
+                    }
+                }
+                "usage_body" => body = Some(child),
+                _ => {}
+            }
+        }
+        if has_typing {
+            if let Some(body) = body {
+                let start = body.start_position().row + 1;
+                let end = body.end_position().row + 1;
+                zones.push(LineRange { start, end });
+            }
+        }
+    }
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk_for_inherited_zones(child, zones);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,6 +242,37 @@ mod tests {
         for expected in ["Engine", "mass", "Wheel", "hub", "P"] {
             assert!(names.contains(expected), "missing {expected}: {names:?}");
         }
+    }
+
+    #[test]
+    fn collects_inherited_zone_for_typed_part() {
+        let source = "package P { part def P1 { port po; } part p1 : P1 { port po :>> po; } }";
+        let result = parse(source).unwrap();
+        let zones = inherited_member_redefinition_zones(&result);
+        assert!(
+            !zones.is_empty(),
+            "expected at least one inherited zone; got: {zones:?}"
+        );
+        // The redefinition `:>> po` is on the same line as `part p1 : P1`.
+        // The zone is the usage_body of `part p1 : P1 { ... }`.
+        assert!(zones.iter().any(|z| z.contains(1)));
+    }
+
+    #[test]
+    fn no_inherited_zone_when_part_has_no_parent_type() {
+        let source = "package P { part def Standalone { port po; } }";
+        let result = parse(source).unwrap();
+        let zones = inherited_member_redefinition_zones(&result);
+        assert!(zones.is_empty(), "expected no zones; got: {zones:?}");
+    }
+
+    #[test]
+    fn inspect_typed_part_sexp() {
+        let result = parse(
+            "package P { part def P1 { port po; } part p1 : P1 { port po :>> po; } }",
+        )
+        .unwrap();
+        eprintln!("SEXP: {}", result.tree.root_node().to_sexp());
     }
 
     #[test]

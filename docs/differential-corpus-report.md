@@ -39,21 +39,20 @@ diff.
 
 ## Current state — examples corpus (95 files)
 
-After v0.10.0 (Batch K: tree-sitter integration for AST-aware
-declaration collection, on top of v0.8.0's qualified-target FP fix,
-last-decl-resets-on-statement-boundary fix, SYSML212/213 demotion):
+After v0.11.0 (Batch L: AST-aware inherited-zone suppression for
+SYSML212/213; tree-sitter ERROR-node SYSML100 wired behind `--strict`):
 
-| Code | Count | v0.8.0 → v0.10.0 | Likely interpretation |
+| Code | Count | v0.8.0 → v0.11.0 | Likely interpretation |
 |---|---|---|---|
-| `SYSML210` | 110 | 131 → 110 (−16%) | Remaining false positives: cross-file resolution gaps, references to library member features (`ISQ::mass.foo`), some genuinely missing references. Batch L will close more with AST-walked scope chains. |
+| `SYSML210` | 110 | 131 → 110 (−16%) | Remaining false positives: cross-file resolution gaps, references to library member features (`ISQ::mass.foo`), some genuinely missing references. |
 | `SYSML211` | 39 | 45 → 39 (−13%) | Same root cause as SYSML210 for `:>>` / `redefines`. |
-| `SYSML213` | 45 | 45 (unchanged) | **Warnings.** Pattern `name :>> name` redefining an inherited member. Token-level analysis cannot distinguish from genuine self-redefinition; the warning is intentionally conservative. Batch L closes this with AST scope tracking. |
-| `SYSML033` | 6 | 6 | Usage missing a declared name or specialization. Six concrete cases to investigate. |
-| `SYSML220` | 1 | 1 | Single cycle finding in `AnalysisAnnotation.sysml` — `force :> force` cross-scope unqualified collision. |
+| `SYSML213` | 1 | 45 → 1 (−98%) | Batch L: AST detects the part-with-parent-type zone and suppresses `:>>` inside, leaving only the genuine top-level cases. Remaining 1 is `wheelToRoadTorque redefines wheelToRoadTorque` inside an `action_usage` which tree-sitter-sysml v0.1 currently exposes with a different shape than `part_usage` (grammar gap). |
+| `SYSML033` | 6 | 6 | Usage missing a declared name or specialization. |
+| `SYSML220` | 1 | 1 | Single cycle finding in `AnalysisAnnotation.sysml`. |
 | `SYSML212` | 1 | 1 | Top-level `:>` self-reference. Likely genuine. |
 | `SYSML041` | 1 | 1 | Duplicate member name — likely real catch. |
 
-**Total findings:** 203 (164 errors, 39 warnings). Down 12% from v0.8.0.
+**Total findings:** 159 (158 errors, 1 warning). Down 31% from v0.8.0.
 
 **Estimated false-positive rate:** ~95%+ on the examples corpus,
 **all attributable to documented token-level limitations**. The
@@ -63,16 +62,16 @@ explicit motivation for US-201 (real parser) in the
 
 ## Current state — validation corpus (56 files)
 
-After v0.10.0 (Batch K):
+After v0.11.0 (Batch L):
 
-| Code | Count | v0.8.0 → v0.10.0 |
+| Code | Count | v0.8.0 → v0.11.0 |
 |---|---|---|
 | `SYSML210` | 31 | 35 → 31 (−11%) |
 | `SYSML211` | 9 | 15 → 9 (−40%) |
 | `SYSML220` | 1 | 1 |
-| `SYSML213` | 1 | 1 |
+| `SYSML213` | 0 | 1 → 0 |
 
-**Total findings:** 42 (41 errors, 1 warning). Down 19% from v0.8.0.
+**Total findings:** 41 (41 errors, 0 warnings). Down 21% from v0.8.0.
 
 The validation corpus is more compact and structured, so its
 false-positive density is lower than examples — and some of its
