@@ -39,20 +39,21 @@ diff.
 
 ## Current state — examples corpus (95 files)
 
-After v0.8.0 changes (qualified-target self-reference fix,
+After v0.10.0 (Batch K: tree-sitter integration for AST-aware
+declaration collection, on top of v0.8.0's qualified-target FP fix,
 last-decl-resets-on-statement-boundary fix, SYSML212/213 demotion):
 
-| Code | Count | Likely interpretation |
-|---|---|---|
-| `SYSML210` | 131 | False positives: references to identifiers declared via SysML v2 metadata-tag shorthand (`#system service_registry { ... }`) which our token-level declaration recognizer does not yet index. AST-aware Phase 2.x work (US-201) closes this. |
-| `SYSML211` | 45 | Same root cause as SYSML210 but for `:>>` / `redefines`. |
-| `SYSML213` | 45 | **Warnings.** Pattern `name :>> name` redefining an inherited member with the same local name. Token-level analysis cannot distinguish from genuine self-redefinition; the warning is intentionally conservative. |
-| `SYSML033` | 6 | Usage missing a declared name or specialization. Six concrete cases to investigate. May reflect SysML v2 syntactic shortcuts our shape recognizer doesn't handle. |
-| `SYSML220` | 1 | Single cycle finding in `AnalysisAnnotation.sysml` — `force :> force` cross-scope. Token-level unqualified-name collision. AST-aware work distinguishes scopes. |
-| `SYSML212` | 1 | Top-level `:>` self-reference. Likely genuine. |
-| `SYSML041` | 1 | Duplicate member name. Worth a closer look — may be a real catch. |
+| Code | Count | v0.8.0 → v0.10.0 | Likely interpretation |
+|---|---|---|---|
+| `SYSML210` | 110 | 131 → 110 (−16%) | Remaining false positives: cross-file resolution gaps, references to library member features (`ISQ::mass.foo`), some genuinely missing references. Batch L will close more with AST-walked scope chains. |
+| `SYSML211` | 39 | 45 → 39 (−13%) | Same root cause as SYSML210 for `:>>` / `redefines`. |
+| `SYSML213` | 45 | 45 (unchanged) | **Warnings.** Pattern `name :>> name` redefining an inherited member. Token-level analysis cannot distinguish from genuine self-redefinition; the warning is intentionally conservative. Batch L closes this with AST scope tracking. |
+| `SYSML033` | 6 | 6 | Usage missing a declared name or specialization. Six concrete cases to investigate. |
+| `SYSML220` | 1 | 1 | Single cycle finding in `AnalysisAnnotation.sysml` — `force :> force` cross-scope unqualified collision. |
+| `SYSML212` | 1 | 1 | Top-level `:>` self-reference. Likely genuine. |
+| `SYSML041` | 1 | 1 | Duplicate member name — likely real catch. |
 
-**Total findings:** 230 (184 errors, 46 warnings).
+**Total findings:** 203 (164 errors, 39 warnings). Down 12% from v0.8.0.
 
 **Estimated false-positive rate:** ~95%+ on the examples corpus,
 **all attributable to documented token-level limitations**. The
@@ -62,14 +63,16 @@ explicit motivation for US-201 (real parser) in the
 
 ## Current state — validation corpus (56 files)
 
-| Code | Count |
-|---|---|
-| `SYSML210` | 35 |
-| `SYSML211` | 15 |
-| `SYSML220` | 1 |
-| `SYSML213` | 1 |
+After v0.10.0 (Batch K):
 
-**Total findings:** 52 (51 errors, 1 warning).
+| Code | Count | v0.8.0 → v0.10.0 |
+|---|---|---|
+| `SYSML210` | 31 | 35 → 31 (−11%) |
+| `SYSML211` | 9 | 15 → 9 (−40%) |
+| `SYSML220` | 1 | 1 |
+| `SYSML213` | 1 | 1 |
+
+**Total findings:** 42 (41 errors, 1 warning). Down 19% from v0.8.0.
 
 The validation corpus is more compact and structured, so its
 false-positive density is lower than examples — and some of its

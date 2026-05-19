@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-J** complete (v0.9.0). Phase 2 continues with US-201 (real parser, Batch K) and US-205 deeper AST-dependent rules (Batch L). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-K** complete (v0.10.0). Phase 2 continues with Batch L (deeper AST-aware rules) and Batch M (LSP server). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -437,22 +437,44 @@ default CLI output to be readable without ANSI / color decoration.
 
 ### Phase 2 — Become a real validator (~ 2-4 months)
 
-#### US-201: Real parser [EPIC]
+#### US-201: Real parser [EPIC] — **PARTIALLY DONE (v0.10.0, Batch K); migration ongoing**
 
-**Description.** As a SysML v2 model author, I want the validator to parse
-the textual grammar correctly so diagnostics report the actual language
-structures, not a token-pattern approximation.
+**Description.** As a SysML v2 model author, I want the validator to
+parse the textual grammar correctly so diagnostics report the actual
+language structures, not a token-pattern approximation.
 
-**Acceptance Criteria:**
-- [ ] Replace the lex-based statement-shape recognizer with a real
-      parser, either by adopting `tree-sitter-sysml` (nomograph) as a
-      dependency or by hand-writing recursive descent against the normative
-      `.kebnf`.
-- [ ] Parser emits an AST with span information.
-- [ ] Existing 15 rule tests continue to pass against the AST-based
-      implementation.
-- [ ] At least 90% of the OMG Pilot's `kerml/` and `sysml/` example
-      directories parse without error.
+**Acceptance Criteria (v0.10.0 scope):**
+- [x] Integrated `tree-sitter` 0.24 + `tree-sitter-sysml` 0.1 grammar.
+      New module [`ast.rs`](../src/ast.rs) wraps the parser.
+- [x] AST-collected declared names augment the existing token-based
+      `declared_in_file` set in `validate_reference_candidates` and
+      `validate_specialization_structure`, closing the largest FP
+      class (metadata-tag declarations).
+- [x] Project-wide [`project.rs`](../src/project.rs) `ProjectIndex`
+      also harvests AST-collected names, closing cross-file FPs.
+- [x] Verified false-positive reduction against the OMG corpus:
+      examples −12% total findings, validation −19% (see
+      [differential-corpus-report.md](differential-corpus-report.md)).
+- [x] AST parse falls back silently if the grammar fails; the token
+      validators still run, preserving the prior behavior as a floor.
+- [x] All bin tests (113) and ignored differential tests (2) pass.
+- [x] `SYSML100` rule code reserved for AST parser-could-not-understand
+      findings (catalog entry present; emission wiring follows in
+      Batch L when we tune the warning policy alongside the deeper
+      rule ports).
+
+**Migration still ongoing:**
+- [ ] Token-level statement-shape recognizer (SYSML030..SYSML035) not
+      yet migrated to AST. Today both run; AST is additive.
+- [ ] AST nesting / scope chain not yet consumed by the structural
+      rules (SYSML212/213 still fire token-level warnings rather than
+      AST-confirmed errors). Batch L closes this — that is the
+      payoff for adding the parser.
+- [ ] Replace token-based suppression-comment scanning with AST
+      `(line_comment)`-aware path so suppressions resolve to the
+      correct enclosing declaration.
+- [ ] Differential side-by-side against the OMG Pilot (still
+      presumptive; pending US-207's harness extension).
 
 #### US-202: Library loader [EPIC] — **DONE (v0.5.0)**
 

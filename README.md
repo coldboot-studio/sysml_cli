@@ -14,7 +14,15 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.9.0 ships **Sysand project manifest discovery**
+> **Status.** v0.10.0 integrates the **tree-sitter SysML grammar**
+> (US-201 Batch K). AST-aware declared-name collection augments the
+> token-based recognizer in both `validate_reference_candidates` and
+> the project-wide symbol index, cutting false-positive findings on
+> the OMG corpus by 12% (examples) and 19% (validation). Token-based
+> validators continue to run as the floor; the AST is additive while
+> migration proceeds in Batch L.
+>
+> v0.9.0 shipped **Sysand project manifest discovery**
 > (US-204) and a **differential-corpus regression harness** (US-207)
 > that runs against the OMG `examples` (95 files) and `validation`
 > (56 files) corpora and fails on count drift. See

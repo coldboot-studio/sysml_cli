@@ -1,6 +1,6 @@
 [package]
 name = "sysml-validate"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2021"
 description = "CLI preflight validator for SysML v2 and KerML textual models."
 license = "MIT"
@@ -26,6 +26,11 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 # library source lives at vendor/sysml-v2-release/sysml.library/ as a
 # git submodule pinned to OMG release tag 2026-04 (EPL-2.0).
 include_dir = { version = "0.7", features = ["glob"] }
+# US-201 (Batch K): tree-sitter parser for SysML v2. Gives us a real
+# CST so we can fix the false positives documented in
+# docs/differential-corpus-report.md.
+tree-sitter = "0.24"
+tree-sitter-sysml = "0.1"
 
 # Reproducible-build settings (US-109). Single codegen unit and fat LTO
 # produce a single deterministic object; strip removes timestamps and

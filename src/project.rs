@@ -11,6 +11,7 @@ use std::path::PathBuf;
 #[cfg(test)]
 use std::path::Path;
 
+use crate::ast;
 use crate::lex::{Scanner, Token};
 use crate::library::extract_declarations_for_project_index;
 
@@ -64,6 +65,27 @@ impl ProjectIndex {
                         .entry(package.clone())
                         .or_default()
                         .insert(declaration.clone());
+                }
+            }
+            // Batch K: also collect declarations via tree-sitter so the
+            // project-wide index sees metadata-tag declarations and any
+            // other shapes the token recognizer misses. AST-collected
+            // names go into the unqualified set and (when a package was
+            // detected) the qualified set + package members.
+            if let Some(ast_parse) = ast::parse(&text) {
+                let ast_names = ast::collect_declared_names(&ast_parse);
+                for name in ast_names {
+                    index.unqualified_names.insert(name.clone());
+                    if let Some(package) = &package {
+                        index
+                            .qualified_names
+                            .insert(format!("{package}::{name}"));
+                        index
+                            .package_members
+                            .entry(package.clone())
+                            .or_default()
+                            .insert(name);
+                    }
                 }
             }
             // Walk the token stream a second time to harvest

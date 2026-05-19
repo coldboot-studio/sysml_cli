@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 
+use crate::ast;
 use crate::config::{Config, RuleOverride};
 use crate::diag::{Diagnostic, Severity, ValidationResult};
 use crate::imports::{extract_imports, ParsedImport};
@@ -56,6 +57,15 @@ pub fn validate_native(
     let mut suppressions = scan.suppressions;
     let non_blank_lines = scan.non_blank_lines;
 
+    // AST parse (US-201, Batch K). Surfaces metadata-tag declarations
+    // and other shapes the token recognizer misses. Falls back silently
+    // if the parser is unavailable — the token-based passes still run.
+    let ast_parse = ast::parse(&text);
+    let ast_declared_names = ast_parse
+        .as_ref()
+        .map(ast::collect_declared_names)
+        .unwrap_or_default();
+
     result.diagnostics.extend(scan.diagnostics);
     result
         .diagnostics
@@ -69,14 +79,23 @@ pub fn validate_native(
     if strict {
         let imports = extract_imports(&tokens);
         result.diagnostics.extend(validate_reference_candidates(
-            path, &tokens, library, project, &imports,
+            path,
+            &tokens,
+            library,
+            project,
+            &imports,
+            &ast_declared_names,
         ));
     }
 
     // Phase 2 Batch H: structural rules that fire regardless of --strict
     // because they catch errors, not heuristic warnings.
     result.diagnostics.extend(validate_specialization_structure(
-        path, &tokens, library, project,
+        path,
+        &tokens,
+        library,
+        project,
+        &ast_declared_names,
     ));
 
     // Apply suppressions first so an unused-suppression notice respects
@@ -312,9 +331,10 @@ fn validate_reference_candidates(
     library: &LibraryLoader,
     project: &ProjectIndex,
     imports: &[ParsedImport],
+    ast_declared: &HashSet<String>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    let declared: HashSet<String> = tokens
+    let mut declared: HashSet<String> = tokens
         .iter()
         .enumerate()
         .filter(|(index, token)| {
@@ -322,6 +342,10 @@ fn validate_reference_candidates(
         })
         .map(|(_, token)| token.value.clone())
         .collect();
+    // Union with the AST-collected names so metadata-tag declarations
+    // and other shapes the token recognizer misses don't produce
+    // spurious unresolved-reference warnings.
+    declared.extend(ast_declared.iter().cloned());
 
     // Pre-compute the set of unqualified leaf names that are pulled into
     // scope by membership imports (e.g., `import Foo::Bar;` makes `Bar`
@@ -418,9 +442,13 @@ fn validate_specialization_structure(
     tokens: &[Token],
     library: &LibraryLoader,
     project: &ProjectIndex,
+    ast_declared: &HashSet<String>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    let declared_in_file = collect_declared_names(tokens);
+    let mut declared_in_file = collect_declared_names(tokens);
+    // Union with AST-collected names (Batch K). Stops SYSML210/211 from
+    // false-firing on metadata-tag declarations like `#system foo {}`.
+    declared_in_file.extend(ast_declared.iter().cloned());
 
     let mut cursor = 0;
     // last_decl is the most recently seen identifier WITHIN THE CURRENT

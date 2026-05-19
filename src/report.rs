@@ -17,7 +17,10 @@ use crate::sarif;
 /// 0.4.0: added SYSML210/211 (target-missing for specialization /
 ///        redefinition), SYSML212/213 (self-reference),
 ///        SYSML220 (specialization cycle across project).
-pub const RULE_CATALOG_VERSION: &str = "0.4.0";
+/// 0.5.0: SYSML212/213 demoted to warning (token-level ambiguity
+///        with inherited-member redefinition); added SYSML100
+///        (parser-could-not-understand) for the tree-sitter AST.
+pub const RULE_CATALOG_VERSION: &str = "0.5.0";
 
 pub struct RunMetadata {
     pub tool_name: &'static str,

@@ -135,6 +135,13 @@ pub const CATALOG: &[Rule] = &[
         default_level: Severity::Error,
     },
     Rule {
+        id: "SYSML100",
+        name: "ParserCouldNotUnderstandRegion",
+        short_description: "Parser could not understand this region.",
+        full_description: "The tree-sitter SysML grammar produced an ERROR or MISSING node at this location. The token-level checks may still find the structural issue; this is a softer signal aimed at surfacing parser confusion early. Warning level so adoption of the AST parser doesn't turn previously-clean files into hard failures.",
+        default_level: Severity::Warning,
+    },
+    Rule {
         id: "SYSML210",
         name: "SpecializationTargetMissing",
         short_description: "Specialization target does not resolve.",
