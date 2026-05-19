@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batch F (US-202 library loader)** complete (v0.5.0). Phase 2 continues with US-203 (name resolution) → US-205 (Pilot rule port). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F (US-202), G (US-203), G.5 (typed-usage `:`), H (US-205 scoped structural rules)** complete (v0.7.0). Phase 2 continues with US-204 (project manifest), US-205 deeper rules requiring AST, and US-207 (differential test). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -492,19 +492,49 @@ standard library.
       declaration site, walking specialization chains across packages)
       is the natural follow-up.
 
-#### US-203: Qualified-name resolution [EPIC]
+#### US-203: Qualified-name resolution [EPIC] — **DONE (v0.6.0), one item deferred**
 
 **Description.** As a SysML v2 model author, I want `import`, `private
-import`, `alias`, and `A::B::C` to resolve across files within a project.
+import`, `alias`, and `A::B::C` to resolve across files within a
+project.
 
 **Acceptance Criteria:**
-- [ ] Implements KerML's qualified-name resolution algorithm including
-      recursive `::**` imports and visibility (`public`, `protected`,
-      `private`).
-- [ ] An unresolved reference produces a `SYSML200` "unresolved name"
-      error with the searched-scope chain in the message.
-- [ ] Differential test: the Pilot's `sysml/src/examples/` parses with
-      the same unresolved-name set, within an agreed delta.
+- [x] Parses every shape of `import` per KerML §8.2.3.4.2:
+      MembershipImport (`import A::B::C;`), NamespaceImport
+      (`import A::B::*;`), recursive variants (`import A::B::**;`,
+      `import A::B::*::**;`), visibility prefixes (`public`, `private`,
+      `protected`), and `import all`. Implemented in
+      [`imports.rs`](../src/imports.rs).
+- [x] Lexer updated to recognize `**` as a single normative KerML token
+      (per BNF clause 11.6).
+- [x] Cross-file project-wide symbol table (`ProjectIndex`) aggregates
+      declarations from every file in the validation run.
+      Implemented in [`project.rs`](../src/project.rs).
+- [x] `validate_reference_candidates` consults the resolution order:
+      (1) declared-in-file, (2) embedded library, (3) project index,
+      (4) explicit/wildcard imports against both library and project.
+- [x] `SYSML040` message updated to reflect the broader resolution
+      path so the user sees that imports and the project were
+      consulted.
+- [x] End-to-end verified: importing `Engines::Engine` from one file
+      resolves `:> Engine` in another; bare `:> CompletelyMadeUp`
+      still warns.
+- [x] **G.5 follow-up (v0.6.1):** added `:` (typed-usage colon) to the
+      reference-marker set. Surfaced while running against the
+      `../scamp/` reference model — 18 typed-usage patterns per file
+      were previously unchecked. Real-world verification: scamp's
+      13-file, 6,015-LOC model now passes `--strict` with `:`
+      enabled, and an injected `part animind : AnimindParrt` typo
+      is correctly flagged.
+- [ ] **Deferred to US-205 batch:** the dedicated `SYSML200`
+      "unresolved name" error with full searched-scope chain. Today
+      we emit `SYSML040` (warning) with a description of where we
+      looked; promoting to an error and detailing the chain is a
+      one-flag-and-one-message change once the Pilot rule port lands.
+- [ ] **Deferred to differential-test batch (US-207):** running the
+      Pilot's `sysml/src/examples/` through both implementations and
+      reporting the diff. The project-wide infrastructure for this
+      now exists; the harness itself is the natural next batch.
 
 #### US-204: Project manifest support
 
@@ -518,23 +548,59 @@ together.
 - [ ] If a `.kpar` archive is referenced, it is read as a dependency.
 - [ ] `--project-root <path>` overrides discovery.
 
-#### US-205: Port the Pilot's named validator rules [EPIC]
+#### US-205: Port the Pilot's named validator rules [EPIC] — **PARTIALLY DONE (v0.7.0); deeper rules pending US-201**
 
 **Description.** As a SysML v2 model author, I want the same semantic
-checks the Pilot runs, with the same rule names, so my diagnostics are
-portable.
+checks the Pilot runs so my diagnostics are portable.
 
-**Acceptance Criteria:**
-- [ ] Port the following rules from the Pilot's Xtext validator suite,
-      keeping the names: `checkFeatureParameterRedefinition`,
-      `validateRedefinitionDirectionConformance`,
-      `checkActionUsageSubactionSpecialization`, plus type / multiplicity /
-      port-flow-direction conformance.
-- [ ] Each ported rule has a `SYSML2xx` code and a fixture model that
-      triggers it.
-- [ ] Differential test against the Pilot on the official example
-      corpus: any disagreement is documented as either a known false
-      positive (bug) or a deliberate divergence (justified in a comment).
+**Honest scoping.** The Pilot's named rules
+(`checkFeatureParameterRedefinition`,
+`validateRedefinitionDirectionConformance`,
+`checkActionUsageSubactionSpecialization`) require **typed semantic
+analysis over an AST** to check things like parameter-order
+conformance, port-flow-direction compatibility, and action-body
+subaction marking. Without US-201 (real parser), faithful ports of
+those exact rules are not achievable. Batch H delivered the subset of
+structural rules that ARE achievable on top of the token + project-
+index infrastructure built in Batches F + G — high-value catches that
+no single-file linter can produce.
+
+**Acceptance Criteria (v0.7.0 scope):**
+- [x] **SYSML210 `SpecializationTargetMissing`** — `:>` target
+      resolution promoted from warning to error. Token-level
+      implementation in [`validate.rs`](../src/validate.rs).
+- [x] **SYSML211 `RedefinitionTargetMissing`** — same for `:>>`.
+- [x] **SYSML212 `SelfSpecialization`** — `feature x :> x`.
+- [x] **SYSML213 `SelfRedefinition`** — `feature x :>> x`.
+- [x] **SYSML220 `SpecializationCycle`** — project-wide cycle
+      detection via DFS over a specialization graph built during the
+      project index pre-pass. Detects cycles that span multiple
+      files — the kind of bug that's invisible to per-file linters
+      and motivated keeping the project index from Batch G.
+      Implementation in [`project.rs`](../src/project.rs).
+- [x] Each new rule has fixture-style unit tests + an end-to-end
+      smoke test (cross-file cycle injection produces the expected
+      `SYSML220` with the full cycle path in the message).
+- [x] Verified against the `../scamp/` reference model (13 files,
+      295 declarations): all five rules pass clean — confirming the
+      rules don't false-fire on a real, well-structured MBSE model.
+
+**Deferred to a later batch (requires US-201 AST or substantial
+parsing infrastructure):**
+- [ ] `checkFeatureParameterRedefinition` — parameter-order
+      conformance in action redefinition.
+- [ ] `validateRedefinitionDirectionConformance` — `in`/`out`/`inout`
+      compatibility in redefinition.
+- [ ] `checkActionUsageSubactionSpecialization` — subaction marking
+      in action bodies.
+- [ ] Type-conformance checks for `:>` and `:>>` (redefining feature
+      type must specialize redefined feature type).
+- [ ] Multiplicity-compatibility checks for `:>` and `:>>`.
+- [ ] Port-flow-direction compatibility in binding connectors.
+
+**Differential testing against the Pilot** is US-207 — natural next
+batch once the structural rules are stable and we have a comparable
+diagnostic surface.
 
 #### US-206: Thin LSP server
 

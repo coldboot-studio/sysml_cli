@@ -202,6 +202,15 @@ fn has_library_extension(path: &str) -> bool {
 /// "Declared identifier" here means: the identifier that immediately
 /// follows one of the SysML v2 declaration-introducing keywords, after
 /// optionally skipping `def`, visibility modifiers, and `abstract` etc.
+///
+/// Exposed via [`extract_declarations_for_project_index`] for the
+/// project-wide symbol table in `project.rs`.
+pub(crate) fn extract_declarations_for_project_index(
+    tokens: &[Token],
+) -> (Option<String>, Vec<String>) {
+    extract_declarations(tokens)
+}
+
 fn extract_declarations(tokens: &[Token]) -> (Option<String>, Vec<String>) {
     let mut package: Option<String> = None;
     let mut declarations = Vec::new();

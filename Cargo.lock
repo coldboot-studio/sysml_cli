@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "sysml-validate"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "include_dir",
  "serde",

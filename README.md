@@ -14,13 +14,28 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.5.0 ships the **embedded SysML v2 standard library**
-> (OMG release `2026-04`, EPL-2.0, vendored at
-> [`vendor/sysml-v2-release/`](vendor/) as a git submodule). The
-> validator now resolves identifiers like `Part`, `ISQ::Mass`, and
-> `Parts::Part` against 94 library files indexing ~4,190 declared
-> symbols — the dominant source of false positives in `--strict` mode
-> is eliminated. See `sysml-validate library-info`.
+> **Status.** v0.7.0 ships **structural rules over specialization /
+> redefinition** (US-205, scoped): `SYSML210`/`SYSML211` flag
+> unresolved `:>` and `:>>` targets as errors (not warnings),
+> `SYSML212`/`SYSML213` flag self-reference, and `SYSML220` detects
+> specialization cycles across the entire project's file set. All five
+> rules run unconditionally — they're errors, not heuristic warnings.
+> Verified against the [`scamp`](../scamp/) reference model (13 files,
+> 6,015 LOC, 295 declarations) which passes clean.
+>
+> v0.6.x ships **cross-file name resolution** (US-203):
+> `import` declarations are parsed per the normative KerML §8.2.3.4.2
+> grammar (membership / namespace / recursive forms, visibility
+> prefixes, `import all`), and a project-wide symbol table aggregates
+> declarations across every file in the validation run. A `:> Engine`
+> reference now resolves through any of: (1) the file's own
+> declarations, (2) explicit and wildcard imports, (3) other files in
+> the run, or (4) the embedded OMG standard library (v0.5.0).
+>
+> v0.5.0 ships the **embedded SysML v2 standard library** (OMG release
+> `2026-04`, EPL-2.0, vendored at [`vendor/sysml-v2-release/`](vendor/)
+> as a git submodule) indexing 94 files and ~4,190 declared symbols.
+> See `sysml-validate library-info`.
 >
 > The Phase 1 government-acceptance envelope is intact (v0.4.0):
 > SARIF / JUnit / JSON / text / plain output, SBOM + Sigstore + GPG +
@@ -266,8 +281,13 @@ Rule codes use the namespace `SYSML0xx`. The current set:
 | `SYSML033` | error   | Usage missing a declared name or specialization. |
 | `SYSML034` | error   | Definition missing a name. |
 | `SYSML035` | error   | Missing `;` or `{` terminator. |
-| `SYSML040` | warning | Identifier reference not declared in this file AND not found in the embedded SysML v2 standard library (with `--strict`). |
+| `SYSML040` | warning | Identifier reference not resolvable via any of: declared-in-file, project imports (membership / namespace / recursive), other files in the validation run, or the embedded SysML v2 standard library (with `--strict`). Checks `:` typed-usage, `:>` / `specializes` / `subsets`, `references` / `redefines`, and `for` / `to` / `from`. |
 | `SYSML041` | error   | Duplicate member name in lexical scope. |
+| `SYSML210` | error   | `:>` / `specializes` target does not resolve. |
+| `SYSML211` | error   | `:>>` / `redefines` target does not resolve. |
+| `SYSML212` | error   | Feature specializes itself. |
+| `SYSML213` | error   | Feature redefines itself. |
+| `SYSML220` | error   | Specialization graph contains a cycle (project-wide). |
 | `SYSML050` | warning | Suppression directive did not match any diagnostic. |
 | `SYSML060` | warning | Suppression directive has invalid syntax. |
 | `SYSML800` | error   | Configuration file is invalid. |

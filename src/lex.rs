@@ -277,7 +277,7 @@ impl<'a> Scanner<'a> {
             };
         }
         let two = self.peek_string(2);
-        if matches!(two.as_str(), ":>" | "::" | ":=" | "=>" | "->" | "..") {
+        if matches!(two.as_str(), ":>" | "::" | ":=" | "=>" | "->" | ".." | "**") {
             self.advance();
             self.advance();
             return Token {

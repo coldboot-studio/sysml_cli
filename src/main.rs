@@ -3,10 +3,12 @@ mod baseline;
 mod config;
 mod diag;
 mod glob;
+mod imports;
 mod info;
 mod junit;
 mod lex;
 mod library;
+mod project;
 mod report;
 mod rules;
 mod sarif;
@@ -24,6 +26,7 @@ use config::{Config, ConfigDiscovery, LoadedConfig};
 use glob::Pattern;
 use info::{print_corpus_json, print_corpus_text, print_grammar_json, print_grammar_text};
 use library::LibraryLoader;
+use project::ProjectIndex;
 use report::{
     print_json_results, print_junit_results, print_plain_results, print_sarif_results,
     print_text_results, RunMetadata,
@@ -157,11 +160,31 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
         return Err("no .sysml or .kerml files found".to_string());
     }
 
+    // Pre-pass: build a project-wide symbol table so cross-file imports
+    // resolve under `--strict` (US-203) and so the specialization graph
+    // can be cycle-checked (US-205 / SYSML220).
+    let project_index = ProjectIndex::build(&files);
+
+    let cycle_diagnostic = project_index
+        .find_specialization_cycle()
+        .map(|cycle| diag::Diagnostic::new(
+            diag::Severity::Error,
+            "SYSML220",
+            format!(
+                "Specialization graph contains a cycle: {}. Cycles break classification reasoning and are rejected by the OMG Pilot.",
+                cycle.join(" :> ")
+            ),
+            files.first().map(PathBuf::as_path).unwrap_or(Path::new("project")),
+            None,
+        ));
+
     let timeout = Duration::from_secs(args.timeout_seconds);
     let mut results = Vec::new();
     for file in files {
         let result = match args.backend {
-            BackendKind::Native => validate_native(&file, args.strict, &loaded.config, &library),
+            BackendKind::Native => {
+                validate_native(&file, args.strict, &loaded.config, &library, &project_index)
+            }
             BackendKind::Official => validate_official(
                 &file,
                 args.official_command
@@ -171,6 +194,12 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
             ),
         };
         results.push(result);
+    }
+
+    // SYSML220 is a project-level finding; attach to the first
+    // ValidationResult so it surfaces in text / SARIF / JUnit paths.
+    if let (Some(diagnostic), Some(first)) = (cycle_diagnostic, results.first_mut()) {
+        first.diagnostics.push(diagnostic);
     }
 
     // When updating the baseline, accept everything: the whole point is

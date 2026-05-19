@@ -14,7 +14,10 @@ use crate::sarif;
 /// 0.2.0: added SYSML904 (official-backend timeout).
 /// 0.3.0: added SYSML050 (unused suppression), SYSML060 (invalid
 ///        suppression directive), SYSML800 (invalid config file).
-pub const RULE_CATALOG_VERSION: &str = "0.3.0";
+/// 0.4.0: added SYSML210/211 (target-missing for specialization /
+///        redefinition), SYSML212/213 (self-reference),
+///        SYSML220 (specialization cycle across project).
+pub const RULE_CATALOG_VERSION: &str = "0.4.0";
 
 pub struct RunMetadata {
     pub tool_name: &'static str,

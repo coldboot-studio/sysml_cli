@@ -5,8 +5,10 @@ use std::path::Path;
 
 use crate::config::{Config, RuleOverride};
 use crate::diag::{Diagnostic, Severity, ValidationResult};
+use crate::imports::{extract_imports, ParsedImport};
 use crate::lex::{Scanner, Token, TokenKind};
 use crate::library::LibraryLoader;
+use crate::project::ProjectIndex;
 use crate::suppress::apply_suppressions;
 
 pub fn is_supported_model_path(path: &Path) -> bool {
@@ -21,6 +23,7 @@ pub fn validate_native(
     strict: bool,
     config: &Config,
     library: &LibraryLoader,
+    project: &ProjectIndex,
 ) -> ValidationResult {
     let mut result = ValidationResult::new(path);
     if !is_supported_model_path(path) {
@@ -64,10 +67,17 @@ pub fn validate_native(
         .diagnostics
         .extend(validate_duplicate_scope_members(path, &tokens));
     if strict {
-        result
-            .diagnostics
-            .extend(validate_reference_candidates(path, &tokens, library));
+        let imports = extract_imports(&tokens);
+        result.diagnostics.extend(validate_reference_candidates(
+            path, &tokens, library, project, &imports,
+        ));
     }
+
+    // Phase 2 Batch H: structural rules that fire regardless of --strict
+    // because they catch errors, not heuristic warnings.
+    result.diagnostics.extend(validate_specialization_structure(
+        path, &tokens, library, project,
+    ));
 
     // Apply suppressions first so an unused-suppression notice respects
     // diagnostics that the next pass would have promoted/demoted/dropped.
@@ -300,6 +310,8 @@ fn validate_reference_candidates(
     path: &Path,
     tokens: &[Token],
     library: &LibraryLoader,
+    project: &ProjectIndex,
+    imports: &[ParsedImport],
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let declared: HashSet<String> = tokens
@@ -310,10 +322,31 @@ fn validate_reference_candidates(
         })
         .map(|(_, token)| token.value.clone())
         .collect();
+
+    // Pre-compute the set of unqualified leaf names that are pulled into
+    // scope by membership imports (e.g., `import Foo::Bar;` makes `Bar`
+    // available) and the set of namespaces whose direct members are
+    // wildcard-imported (`import Foo::*;` → `"Foo"`).
+    let imported_leaves: HashSet<&str> = imports
+        .iter()
+        .filter_map(ParsedImport::membership_leaf)
+        .collect();
+    let wildcard_namespaces: Vec<String> = imports
+        .iter()
+        .filter_map(ParsedImport::namespace_root)
+        .collect();
+
+    // Reference markers — the token AFTER one of these is the
+    // identifier we want to resolve against the project + library +
+    // imports. ':' is the typed-usage colon (`part foo : Bar`) which is
+    // by far the most common reference site in real SysML v2 models;
+    // the longer `:>`, `:>>`, `:=`, `::` forms tokenize as distinct
+    // operators and never reach a bare-`:` check.
     let reference_markers = [
         "for",
         "to",
         "from",
+        ":",
         ":>",
         "specializes",
         "subsets",
@@ -332,14 +365,25 @@ fn validate_reference_candidates(
             continue;
         }
 
-        // Resolve against the standard library. If the candidate is the
-        // leaf of a qualified name (`A::B::Foo`), check the qualified
-        // path; otherwise fall back to the unqualified name index.
         let qualified = read_qualified_name(tokens, index + 1);
-        let resolved = if qualified.contains("::") {
-            library.contains_qualified(&qualified)
+        let is_qualified = qualified.contains("::");
+
+        // Resolution order (US-203):
+        //   1. Standard library (qualified or unqualified index).
+        //   2. Project-wide symbol table (other files in the same run).
+        //   3. Imports — explicit membership imports of the leaf name,
+        //      or wildcard imports whose namespace contains the leaf.
+        let resolved = if is_qualified {
+            library.contains_qualified(&qualified) || project.contains_qualified(&qualified)
         } else {
             library.contains_unqualified(&candidate.value)
+                || project.contains_unqualified(&candidate.value)
+                || imported_leaves.contains(candidate.value.as_str())
+                || wildcard_namespaces.iter().any(|namespace| {
+                    library
+                        .contains_qualified(&format!("{namespace}::{}", candidate.value))
+                        || project.namespace_contains(namespace, &candidate.value)
+                })
         };
         if resolved {
             continue;
@@ -349,14 +393,133 @@ fn validate_reference_candidates(
             Severity::Warning,
             "SYSML040",
             format!(
-                "Reference '{}' is not declared in this file and was not found in the loaded library. It may resolve from a project import.",
-                if qualified.contains("::") { &qualified } else { &candidate.value }
+                "Reference '{}' is not declared in this file, not imported, and was not found in the project or standard library.",
+                if is_qualified { &qualified } else { &candidate.value }
             ),
             path,
             Some(candidate.position()),
         ));
     }
     diagnostics
+}
+
+/// SYSML210/211/212/213 — structural rules over `:>` and `:>>` that
+/// don't depend on `--strict`. These are errors, not warnings: the
+/// model is provably malformed if any fire.
+///
+/// Walks the token stream once, looking for the patterns:
+///   `<decl_name> :> <target>`     (specialization)
+///   `<decl_name> :>> <target>`    (redefinition)
+/// where `<decl_name>` is the most recently seen identifier preceding
+/// the marker, and `<target>` is the (qualified) identifier that
+/// follows it.
+fn validate_specialization_structure(
+    path: &Path,
+    tokens: &[Token],
+    library: &LibraryLoader,
+    project: &ProjectIndex,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let declared_in_file = collect_declared_names(tokens);
+
+    let mut cursor = 0;
+    let mut last_decl: Option<&Token> = None;
+    while cursor < tokens.len() {
+        let token = &tokens[cursor];
+        if token.kind == TokenKind::Identifier {
+            last_decl = Some(token);
+            cursor += 1;
+            continue;
+        }
+        let is_specialization = token.value == ":>" || token.value == "specializes";
+        let is_redefinition = token.value == ":>>" || token.value == "redefines";
+        if !(is_specialization || is_redefinition) {
+            cursor += 1;
+            continue;
+        }
+        let Some(target_token) = tokens.get(cursor + 1) else {
+            cursor += 1;
+            continue;
+        };
+        if target_token.kind != TokenKind::Identifier {
+            cursor += 1;
+            continue;
+        }
+        let target_qualified = read_qualified_name(tokens, cursor + 1);
+        let target_leaf = target_qualified
+            .rsplit_once("::")
+            .map(|(_, leaf)| leaf)
+            .unwrap_or(target_qualified.as_str());
+
+        // SYSML212 / SYSML213: self-reference.
+        if let Some(decl) = last_decl {
+            if decl.value == target_leaf {
+                let code: &'static str = if is_specialization { "SYSML212" } else { "SYSML213" };
+                let verb = if is_specialization {
+                    "specialize"
+                } else {
+                    "redefine"
+                };
+                diagnostics.push(Diagnostic::new(
+                    Severity::Error,
+                    code,
+                    format!("Feature '{}' cannot {verb} itself.", decl.value),
+                    path,
+                    Some(target_token.position()),
+                ));
+                cursor += 1;
+                continue;
+            }
+        }
+
+        // SYSML210 / SYSML211: target does not resolve through any path.
+        // Reuse the same resolution order as SYSML040 but promote to error.
+        let resolves = if target_qualified.contains("::") {
+            library.contains_qualified(&target_qualified)
+                || project.contains_qualified(&target_qualified)
+        } else {
+            declared_in_file.contains(target_leaf)
+                || library.contains_unqualified(target_leaf)
+                || project.contains_unqualified(target_leaf)
+        };
+        if !resolves {
+            let code: &'static str = if is_specialization { "SYSML210" } else { "SYSML211" };
+            let kind = if is_specialization {
+                "Specialization"
+            } else {
+                "Redefinition"
+            };
+            diagnostics.push(Diagnostic::new(
+                Severity::Error,
+                code,
+                format!(
+                    "{kind} target '{}' does not resolve. {kind} requires its target to exist.",
+                    if target_qualified.contains("::") {
+                        target_qualified.clone()
+                    } else {
+                        target_leaf.to_string()
+                    }
+                ),
+                path,
+                Some(target_token.position()),
+            ));
+        }
+
+        cursor += 1;
+    }
+
+    diagnostics
+}
+
+fn collect_declared_names(tokens: &[Token]) -> HashSet<String> {
+    tokens
+        .iter()
+        .enumerate()
+        .filter(|(index, token)| {
+            token.kind == TokenKind::Identifier && is_declaration_name(tokens, *index)
+        })
+        .map(|(_, token)| token.value.clone())
+        .collect()
 }
 
 /// Read a qualified name starting at `start` (`Foo`, `A::B`, `A::B::C`,
@@ -704,7 +867,8 @@ mod tests {
         let path = dir.join(format!("model{suffix}"));
         fs::write(&path, text).expect("write temp model");
         let library = LibraryLoader::embedded();
-        let result = validate_native(&path, strict, &Config::default(), &library);
+        let project = ProjectIndex::empty();
+        let result = validate_native(&path, strict, &Config::default(), &library, &project);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         result
@@ -745,6 +909,205 @@ mod tests {
         assert!(
             !result.diagnostics.iter().any(|d| d.code == "SYSML040"),
             "library should resolve 'Parts::Part'; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    // ---- US-203: import + cross-file resolution tests ----
+
+    fn validate_with_project(
+        text: &str,
+        suffix: &str,
+        strict: bool,
+        project: &ProjectIndex,
+    ) -> ValidationResult {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let dir = env::temp_dir().join(format!("sysml_validate_xfile_{unique}"));
+        fs::create_dir_all(&dir).expect("temp dir");
+        let path = dir.join(format!("model{suffix}"));
+        fs::write(&path, text).expect("write");
+        let library = LibraryLoader::embedded();
+        let result = validate_native(&path, strict, &Config::default(), &library, project);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&dir);
+        result
+    }
+
+    #[test]
+    fn explicit_membership_import_resolves_leaf() {
+        let result = validate_temp(
+            "package P { import Engines::Engine; part e :> Engine; }",
+            ".sysml",
+            true,
+        );
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "import Engines::Engine should bring Engine into scope; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn wildcard_namespace_import_resolves_library_member() {
+        // Parts::Part is in the embedded library; `import Parts::*;` should
+        // make the bare name `Part` resolve.
+        let result = validate_temp(
+            "package P { import Parts::*; part e :> Part; }",
+            ".sysml",
+            true,
+        );
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "wildcard library import should resolve 'Part'; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn project_index_resolves_cross_file_reference() {
+        let project =
+            ProjectIndex::from_tokens(Some("Engines".into()), vec!["Engine".into()], Path::new("/x"));
+        let result = validate_with_project(
+            "package P { part e :> Engines::Engine; }",
+            ".sysml",
+            true,
+            &project,
+        );
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "project index should resolve 'Engines::Engine'; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn typed_usage_colon_catches_typo() {
+        // Real-world bug: `part wheel : Whell;` is a typo for `Wheel`.
+        // Pre-Batch-G.5 this passed silently because `:` was not in the
+        // marker set; the gap surfaced when running against the scamp
+        // reference model.
+        let result = validate_temp(
+            "package P { part def Wheel; part wheel : Whell; }",
+            ".sysml",
+            true,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML040"
+                && d.message.contains("Whell")),
+            "typed-usage typo 'Whell' should be flagged; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn typed_usage_colon_resolves_library_type() {
+        // `attribute mass : Real;` is the most common typed-usage form;
+        // `Real` lives in the embedded ScalarValues library and should
+        // resolve cleanly. Negative case: `attribute mass : Bogus123;`
+        // should still warn.
+        let clean =
+            validate_temp("package P { attribute mass : Real; }", ".sysml", true);
+        assert!(
+            !clean.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "Real should resolve from library; got: {:?}",
+            clean.diagnostics
+        );
+        let dirty =
+            validate_temp("package P { attribute mass : Bogus123; }", ".sysml", true);
+        assert!(
+            dirty.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "Bogus123 should warn; got: {:?}",
+            dirty.diagnostics
+        );
+    }
+
+    // ---- Batch H: structural rules (SYSML210/211/212/213/220) ----
+
+    #[test]
+    fn missing_specialization_target_is_error() {
+        // Bare `:> Foo` where Foo doesn't exist anywhere. SYSML210 fires.
+        let result = validate_temp(
+            "package P { part def Engine :> NonexistentParent; }",
+            ".sysml",
+            false,
+        );
+        let sysml210: Vec<_> = result.diagnostics.iter().filter(|d| d.code == "SYSML210").collect();
+        assert_eq!(sysml210.len(), 1, "expected exactly one SYSML210; got: {:?}", result.diagnostics);
+        assert_eq!(sysml210[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn missing_redefinition_target_is_error() {
+        let result = validate_temp(
+            "package P { part def Engine { feature thrust :>> nonexistentFeature; } }",
+            ".sysml",
+            false,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML211"),
+            "expected SYSML211; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn resolved_specialization_target_does_not_error() {
+        // `:> Part` resolves via the embedded library; no SYSML210.
+        let result = validate_temp(
+            "package P { part def Engine :> Part; }",
+            ".sysml",
+            false,
+        );
+        assert!(
+            !result.diagnostics.iter().any(|d| d.code == "SYSML210"),
+            "library-resolved target should not fire SYSML210; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn self_specialization_is_error() {
+        let result = validate_temp(
+            "package P { part def Engine :> Engine; }",
+            ".sysml",
+            false,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML212"),
+            "expected SYSML212; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn self_redefinition_is_error() {
+        let result = validate_temp(
+            "package P { part def Engine { feature thrust :>> thrust; } }",
+            ".sysml",
+            false,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML213"),
+            "expected SYSML213; got: {:?}",
+            result.diagnostics
+        );
+    }
+
+    #[test]
+    fn import_does_not_resolve_unrelated_name() {
+        // The import is for `Engine`; a reference to `Wheel` should still
+        // warn (negative control).
+        let result = validate_temp(
+            "package P { import Engines::Engine; part w :> Wheel; }",
+            ".sysml",
+            true,
+        );
+        assert!(
+            result.diagnostics.iter().any(|d| d.code == "SYSML040"),
+            "Wheel should still warn; got: {:?}",
             result.diagnostics
         );
     }
@@ -800,7 +1163,8 @@ mod tests {
             .rules
             .insert("SYSML040".into(), "error".into());
         let library = LibraryLoader::embedded();
-        let result = validate_native(&path, true, &config, &library);
+        let project = ProjectIndex::empty();
+        let result = validate_native(&path, true, &config, &library, &project);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         let promoted = result
@@ -824,7 +1188,8 @@ mod tests {
         let mut config = Config::default();
         config.rules.insert("SYSML041".into(), "off".into());
         let library = LibraryLoader::embedded();
-        let result = validate_native(&path, false, &config, &library);
+        let project = ProjectIndex::empty();
+        let result = validate_native(&path, false, &config, &library, &project);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir(&dir);
         assert!(
