@@ -351,6 +351,20 @@ contexts. Authoritative statements:
 - [`docs/accessibility.md`](docs/accessibility.md) — Section 508
   conformance, draft VPAT 2.5 (Rev 508), `--format plain` contract.
 
+Compliance mapping artifacts (Phase 3):
+
+- [`docs/compliance/ssdf-mapping.md`](docs/compliance/ssdf-mapping.md)
+  — NIST SP 800-218 SSDF practice-by-practice evidence.
+- [`docs/compliance/nist-800-53-mapping.md`](docs/compliance/nist-800-53-mapping.md)
+  — NIST 800-53 Rev 5 control mapping.
+- [`docs/compliance/cmmc-l2-deployment.md`](docs/compliance/cmmc-l2-deployment.md)
+  — CMMC 2.0 Level 2 deployment recipe.
+- [`docs/compliance/do-330-qualification-kit/`](docs/compliance/do-330-qualification-kit/)
+  — DO-330 TQL-5 qualification kit templates (TOR, TQP, TQA, TCMP,
+  TVCP, TVCR, TAS).
+- [`docs/compliance/nasa-npr-7150-2d-tool-validation.md`](docs/compliance/nasa-npr-7150-2d-tool-validation.md)
+  — NASA NPR 7150.2D tool validation report template.
+
 ## License
 
 MIT. See `LICENSE`.

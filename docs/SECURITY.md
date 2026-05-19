@@ -123,5 +123,12 @@ The most relevant controls a sysml-validate deployment helps satisfy:
 | CM-7    | Least functionality — no network in `validate` |
 | AU-2/12 | Auditable events — per-run metadata block + SARIF |
 
-A control-by-control mapping lands in
-`docs/compliance/nist-800-53-mapping.md` in Phase 3 of the PRD.
+Full control-by-control mapping:
+[`docs/compliance/nist-800-53-mapping.md`](compliance/nist-800-53-mapping.md).
+NIST SSDF mapping: [`docs/compliance/ssdf-mapping.md`](compliance/ssdf-mapping.md).
+CMMC L2 deployment recipe:
+[`docs/compliance/cmmc-l2-deployment.md`](compliance/cmmc-l2-deployment.md).
+DO-330 TQL-5 qualification kit skeleton:
+[`docs/compliance/do-330-qualification-kit/`](compliance/do-330-qualification-kit/).
+NASA NPR 7150.2D tool validation template:
+[`docs/compliance/nasa-npr-7150-2d-tool-validation.md`](compliance/nasa-npr-7150-2d-tool-validation.md).

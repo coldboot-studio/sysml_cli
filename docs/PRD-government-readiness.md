@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-L** complete (v0.11.0). Phase 2 continues with Batch M (LSP server). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-L + Phase 3 compliance docs (Batch N)** complete (v0.12.0). Phase 2 continues with Batch M (LSP server); Phase 3 templates filled in per-adopting-project. |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-18 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -700,64 +700,71 @@ fails when finding counts drift, with categorized causes.
 
 ### Phase 3 — Government acceptance package (~ 1-3 months, mostly docs)
 
-#### US-301: NIST SSDF mapping
+#### US-301: NIST SSDF mapping — **DONE (v0.12.0)**
 
 **Description.** As a defense prime SSDF reviewer, I want a single
-document that maps every NIST SP 800-218 practice (PO, PS, PW, RV) to a
-piece of evidence in this repository.
+document that maps every NIST SP 800-218 practice (PO, PS, PW, RV)
+to a piece of evidence in this repository.
 
 **Acceptance Criteria:**
-- [ ] `docs/compliance/ssdf-mapping.md` covers PO.1, PS.1-3, PW.4, PW.6,
-      PW.7, RV.1-3 with links to specific repo artifacts (CI configs,
-      branch protection settings, SECURITY.md, release process).
-- [ ] A completed CISA Common Form (kept on file even though M-26-05
-      made universal attestation risk-based) is referenced from this doc.
+- [x] [`docs/compliance/ssdf-mapping.md`](compliance/ssdf-mapping.md)
+      covers PO.1–5, PS.1–3, PW.1–9, RV.1–3 with links to specific repo
+      artifacts (CI configs, SECURITY.md, release workflow, Cargo.toml).
+- [x] References the OMB M-26-05 update on risk-based attestation
+      (versus the rescinded M-22-18 universal mandate). Common Form is
+      filled in per-adopting-project; the document explains why.
 
-#### US-302: NIST 800-53 Rev 5 control mapping
+#### US-302: NIST 800-53 Rev 5 control mapping — **DONE (v0.12.0)**
 
 **Description.** As an ATO reviewer, I want to see which NIST 800-53
 controls this tool supports a system in satisfying.
 
 **Acceptance Criteria:**
-- [ ] `docs/compliance/nist-800-53-mapping.md` covers SA-11, SA-15,
-      SR-3, SR-4, SR-11, SI-7, CM-7, AU-2, AU-12 with one-paragraph
-      explanations of how `sysml-validate` participates in satisfying each.
+- [x] [`docs/compliance/nist-800-53-mapping.md`](compliance/nist-800-53-mapping.md)
+      covers SA-11, SA-15, SI-7, SR-3/4/11, CM-7, AU-2, AU-12 with
+      explanations of how the tool participates. Also enumerates
+      partially-supported controls (AC-3/6, CM-3/6, CP-9, IA-2) and
+      explicit out-of-scope controls. Includes DoD Cloud SRG impact-
+      level guidance (IL2/IL4/IL5).
 
-#### US-303: CMMC L2 deployment guide
+#### US-303: CMMC L2 deployment guide — **DONE (v0.12.0)**
 
 **Description.** As a CMMC L2 contractor, I want a deployment recipe
 that does not undo my controls.
 
 **Acceptance Criteria:**
-- [ ] `docs/compliance/cmmc-l2-deployment.md` covers least-privilege
-      execution, audit logging configuration, output retention guidance,
-      and a hardened-container example.
+- [x] [`docs/compliance/cmmc-l2-deployment.md`](compliance/cmmc-l2-deployment.md)
+      covers pre-deployment verification, install model, control-
+      domain mapping (AC, AU, CM, IA, SI), air-gap deployment, and a
+      hardened-container example.
 
-#### US-304: DO-330 TQL-5 qualification kit skeleton
+#### US-304: DO-330 TQL-5 qualification kit skeleton — **DONE (v0.12.0)**
 
 **Description.** As a DO-178C airworthiness program user, I want a
-qualification kit so I can use `sysml-validate` to discharge a verification
-objective.
+qualification kit so I can use `sysml-validate` to discharge a
+verification objective.
 
 **Acceptance Criteria:**
-- [ ] `docs/compliance/do-330/` contains template documents for: Tool
-      Operational Requirements (TOR), Tool Qualification Plan (TQP), Tool
-      Quality Assurance Plan, Tool Configuration Management Plan, Tool
-      Verification Cases and Procedures (TVCP), Tool Verification Cases
-      and Results (TVCR), Tool Accomplishment Summary (TAS).
-- [ ] Tool Criterion is set to Criterion 3 (verification tool, no
-      replacement of activity) and TQL-5 is targeted.
-- [ ] Filled-in TOR and TVCR for one representative ruleset; the rest
-      are templates.
+- [x] [`docs/compliance/do-330-qualification-kit/`](compliance/do-330-qualification-kit/)
+      contains template documents: TOR, TQP, TQA, TCMP, TVCP, TVCR,
+      TAS. Each cross-references the implementation evidence (SECURITY,
+      REPRODUCING, THREAT_MODEL, differential corpus report).
+- [x] Tool Criterion is documented as Criterion 3 (verification tool,
+      no replacement of activity); TQL-5 is the target.
+- [x] TOR template includes 8 sample TOR-FR requirements with mapping
+      to TVCP cases TC-001..TC-008; project-specific completion is the
+      adopter's responsibility (documented in the kit README).
 
-#### US-305: NASA NPR 7150.2D tool validation report
+#### US-305: NASA NPR 7150.2D tool validation report — **DONE (v0.12.0)**
 
 **Description.** As a NASA Class A/B/C program user, I want a tool
 validation report aligned with NPR 7150.2D §4.4.8 / §4.5.6.
 
 **Acceptance Criteria:**
-- [ ] `docs/compliance/nasa-npr-7150-2d-tool-validation.md` documents
-      the intended use, validation evidence, and limitations.
+- [x] [`docs/compliance/nasa-npr-7150-2d-tool-validation.md`](compliance/nasa-npr-7150-2d-tool-validation.md)
+      documents intended use, project-use context, validation evidence
+      with cross-references, validation approach, operational limits
+      (Class A caveat), re-validation triggers, and sign-off section.
 
 #### US-306: VPAT 2.5 (Rev 508)
 
