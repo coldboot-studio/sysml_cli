@@ -382,13 +382,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y diffoscope
 
-      - name: diffoscope --exit-code
+      - name: diffoscope binaries
         shell: bash
         run: |
-          # Fails the job (non-zero exit) on any difference. Output
-          # names the sections that differ so the maintainer can chase
-          # the source of non-determinism. The expected outcome on a
-          # well-behaved release is "no differences detected" plus exit 0.
-          diffoscope --exit-code \
+          # diffoscope's exit code is already 0 if identical, 1 if any
+          # difference (no explicit --exit-code flag needed; the flag
+          # doesn't exist in the diffoscope shipped on ubuntu-latest).
+          # Output names the sections that differ so the maintainer
+          # can chase the source of non-determinism. The expected
+          # outcome on a well-behaved release is "no differences
+          # detected" plus exit 0.
+          diffoscope \
             verify/sysml-validate-original \
             verify/sysml-validate-rebuild
