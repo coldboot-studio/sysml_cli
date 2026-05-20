@@ -14,7 +14,23 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.13.0 ships a **thin LSP server** (US-206).
+> **Status.** v0.14.0 closes the in-repo half of **Batch O — final
+> polish**. Every GitHub Actions `uses:` is SHA-pinned with a
+> tag-comment trailer (a strict SLSA L3 audit will no longer flag
+> mutable refs). The release workflow gains a `reproducibility-
+> check` job that rebuilds Linux x86_64 on a clean runner and
+> `diffoscope`s it against the matrix-built artifact, failing the
+> release on any diff. CI gains a nightly `differential` cron that
+> runs the OMG-corpus harness and fails loud on histogram drift.
+> US-307 (`--fips`) is formally deferred until the tool acquires a
+> runtime cryptographic operation — see
+> [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md)
+> §10 / US-307 for the decision record. Three operator-action items
+> remain (GPG key provisioning, first-release SBOM verification,
+> third-party VPAT review) — those cannot be discharged from the
+> repo alone and are tracked in PRD §10.
+>
+> v0.13.0 shipped a **thin LSP server** (US-206).
 > `sysml-validate lsp` speaks Language Server Protocol over stdin/stdout
 > using `lsp-server` and `lsp-types` directly (no tokio runtime).
 > Handles `initialize`, `textDocument/didOpen` / `didChange` / `didClose`,

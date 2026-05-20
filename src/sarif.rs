@@ -133,10 +133,10 @@ fn diagnostic_to_json(
 
     if let Some(baseline) = baseline {
         let state = baseline.classify(diagnostic.code, &fingerprint);
-        value
-            .as_object_mut()
-            .expect("object")
-            .insert("baselineState".to_string(), Value::String(state.as_str().into()));
+        value.as_object_mut().expect("object").insert(
+            "baselineState".to_string(),
+            Value::String(state.as_str().into()),
+        );
     }
 
     value
@@ -206,7 +206,10 @@ mod tests {
         let parsed: Value = serde_json::from_str(&output).expect("parse SARIF");
         assert_eq!(parsed["version"], "2.1.0");
         assert_eq!(parsed["runs"].as_array().unwrap().len(), 1);
-        assert_eq!(parsed["runs"][0]["tool"]["driver"]["name"], "sysml-validate");
+        assert_eq!(
+            parsed["runs"][0]["tool"]["driver"]["name"],
+            "sysml-validate"
+        );
         let rules = parsed["runs"][0]["tool"]["driver"]["rules"]
             .as_array()
             .expect("rules array");
@@ -240,7 +243,10 @@ mod tests {
         assert_eq!(result_entry["ruleId"], "SYSML041");
         assert_eq!(result_entry["level"], "error");
         assert!(result_entry["partialFingerprints"]["diagnosticHash/v1"].is_string());
-        assert_eq!(result_entry["locations"][0]["physicalLocation"]["region"]["startLine"], 5);
+        assert_eq!(
+            result_entry["locations"][0]["physicalLocation"]["region"]["startLine"],
+            5
+        );
         // No baseline given → no baselineState field.
         assert!(result_entry.get("baselineState").is_none());
         assert!(result_entry.get("suppressions").is_none());
@@ -334,7 +340,10 @@ mod tests {
             Some(&baseline),
         );
         let parsed: Value = serde_json::from_str(&with_baseline).unwrap();
-        assert_eq!(parsed["runs"][0]["results"][0]["baselineState"], "unchanged");
+        assert_eq!(
+            parsed["runs"][0]["results"][0]["baselineState"],
+            "unchanged"
+        );
     }
 
     #[test]

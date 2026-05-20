@@ -138,10 +138,7 @@ mod tests {
             baseline.classify("SYSML041", "different"),
             BaselineState::New
         );
-        assert_eq!(
-            baseline.classify("SYSML030", "abc123"),
-            BaselineState::New
-        );
+        assert_eq!(baseline.classify("SYSML030", "abc123"), BaselineState::New);
     }
 
     #[test]

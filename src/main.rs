@@ -163,7 +163,12 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
         .source_root
         .clone()
         .or_else(|| loaded.config.project_root.clone())
-        .or_else(|| loaded.path.as_ref().and_then(|p| p.parent().map(Path::to_path_buf)));
+        .or_else(|| {
+            loaded
+                .path
+                .as_ref()
+                .and_then(|p| p.parent().map(Path::to_path_buf))
+        });
     let files = discover_files(&args.paths, &loaded.config, project_root.as_deref())?;
     if files.is_empty() {
         return Err("no .sysml or .kerml files found".to_string());
@@ -224,10 +229,7 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
         args.strict,
         args.fail_on_warning,
         args.format.as_str(),
-        loaded
-            .path
-            .as_ref()
-            .map(|path| path.display().to_string()),
+        loaded.path.as_ref().map(|path| path.display().to_string()),
         args.baseline_path
             .as_ref()
             .map(|path| path.display().to_string()),
@@ -255,8 +257,9 @@ fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
             );
             if args.update_baseline {
                 if let Some(path) = &args.baseline_path {
-                    fs::write(path, &document)
-                        .map_err(|error| format!("unable to write baseline '{}': {error}", path.display()))?;
+                    fs::write(path, &document).map_err(|error| {
+                        format!("unable to write baseline '{}': {error}", path.display())
+                    })?;
                 }
             }
         }
@@ -518,9 +521,9 @@ fn parse_validate_args(args: &[String]) -> Result<ValidateArgs, String> {
             "--timeout" => {
                 index += 1;
                 let value = args.get(index).ok_or("--timeout requires a value")?;
-                timeout_seconds = value
-                    .parse::<u64>()
-                    .map_err(|error| format!("--timeout must be a non-negative integer ({error})"))?;
+                timeout_seconds = value.parse::<u64>().map_err(|error| {
+                    format!("--timeout must be a non-negative integer ({error})")
+                })?;
             }
             "--config" => {
                 index += 1;
@@ -636,7 +639,9 @@ fn discover_files(
         .filter(|file| {
             let candidate = relativize(file, project_root);
             let included = include_patterns.is_empty()
-                || include_patterns.iter().any(|pattern| pattern.matches(&candidate));
+                || include_patterns
+                    .iter()
+                    .any(|pattern| pattern.matches(&candidate));
             let excluded = exclude_patterns
                 .iter()
                 .any(|pattern| pattern.matches(&candidate));
@@ -688,7 +693,9 @@ fn print_validate_help() {
     println!("Options:");
     println!("  --format text|plain|json|sarif|junit  output format (default: text)");
     println!("                                    'plain' is the screen-reader-friendly");
-    println!("                                    no-decoration variant (see docs/accessibility.md)");
+    println!(
+        "                                    no-decoration variant (see docs/accessibility.md)"
+    );
     println!("  --ci                            shortcut for --format sarif");
     println!("  --strict                        warn on unresolved identifiers");
     println!("  --fail-on-warning               exit 1 if any warning is produced");
@@ -697,7 +704,9 @@ fn print_validate_help() {
     println!("  --no-config                     skip config-file discovery");
     println!("  --library-path <dir>            override embedded SysML v2 std library");
     println!("  --baseline <path>               classify findings against a prior SARIF run");
-    println!("  --update-baseline               overwrite --baseline with the current run (--ci only)");
+    println!(
+        "  --update-baseline               overwrite --baseline with the current run (--ci only)"
+    );
     println!("  --backend native|official");
     println!("  --official-command <argv template containing {{file}}>");
     println!("  --timeout <seconds>             official backend only (default 60)");

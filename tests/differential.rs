@@ -39,11 +39,7 @@ const EXAMPLES_BASELINE: &[(&str, usize)] = &[
 ];
 
 /// Baseline finding counts for the OMG **validation** corpus.
-const VALIDATION_BASELINE: &[(&str, usize)] = &[
-    ("SYSML210", 31),
-    ("SYSML211", 9),
-    ("SYSML220", 1),
-];
+const VALIDATION_BASELINE: &[(&str, usize)] = &[("SYSML210", 31), ("SYSML211", 9), ("SYSML220", 1)];
 
 #[test]
 #[ignore = "runs the full OMG corpus; use cargo test --test differential -- --ignored"]
@@ -97,9 +93,7 @@ fn assert_corpus_matches_baseline(label: &str, corpus: &Path, baseline: &[(&str,
     for (code, expected_count) in &expected {
         let actual = counts.get(*code).copied().unwrap_or(0);
         if actual != *expected_count {
-            drift.push(format!(
-                "{code}: baseline={expected_count} actual={actual}"
-            ));
+            drift.push(format!("{code}: baseline={expected_count} actual={actual}"));
         }
     }
     for (code, actual) in &counts {

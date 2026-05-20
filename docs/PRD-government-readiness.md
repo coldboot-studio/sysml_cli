@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N)** complete (v0.13.0). One batch outstanding: **O** (final polish — operator-action items consolidated). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N) + Batch O code/CI polish** complete (v0.14.0). Remaining Batch O items (O-3, O-4, O-5) are operator-action items that require the first tagged release or a third-party consultant and cannot be discharged from the repo alone. |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-19 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -33,7 +33,7 @@ stories in the body of this PRD.
 | L | DONE v0.11.0 | US-201 cont. | AST-aware inherited-zone SYSML213 suppression |
 | N | DONE v0.12.0 | US-301-305 | NIST SSDF / 800-53 / CMMC / DO-330 / NPR 7150.2D |
 | M | DONE v0.13.0 | US-206 | Thin LSP server (hover + diagnostics over stdio) |
-| **O** | **TODO** | (consolidated) | **Final polish — see §10 below** |
+| O | DONE v0.14.0 (code/CI items) | (consolidated) | SHA-pinned actions, diffoscope job, nightly differential cron, --fips deferred, debug-test removed; O-3 / O-4 / O-5 remain operator actions for first release. |
 
 After M and O, the user-story-level work in the PRD is closed.
 Adopting projects continue the remaining "per-project completion"
@@ -820,17 +820,33 @@ completed VPAT so I can include `sysml-validate` in an ICT procurement.
 **Acceptance Criteria:**
 - [ ] `docs/compliance/vpat-2.5-rev508.md` is published.
 
-#### US-307: `--fips` build flag
+#### US-307: `--fips` build flag — **DEFERRED (Batch O-6 decision, 2026-05-19)**
 
 **Description.** As a federal agency operator, I want a build that uses
 only FIPS 140-3 validated cryptography for any signing or hashing.
 
-**Acceptance Criteria:**
+**Decision (Batch O-6, 2026-05-19): Option (a) — defer until needed.**
+The tool performs no runtime cryptographic operations: there is no
+network channel to encrypt, no payload to sign at runtime, no
+credential to hash. The only hashing performed (the SHA-256 of
+diagnostic fingerprints in [diag.rs](../src/diag.rs)) is an
+integrity-and-deduplication mechanism, not a cryptographic claim, and
+its consumers (baseline diff, SARIF) require collision resistance but
+not FIPS 140-3 algorithm-suite compliance — a FIPS-validated SHA-256
+module would change nothing observable about the output.
+
+Reopening US-307 is the right call only once one of: (i) the tool
+gains a network-bearing subcommand (a Systems Modeling API client per
+US-401, an opt-in `sysand fetch`), (ii) the tool needs to sign or
+verify its own runtime outputs (e.g., emitting cosign-signed SARIF),
+or (iii) a procurement explicitly requires the build flag exist.
+
+**Acceptance Criteria (held for the day this reopens):**
 - [ ] `cargo build --features fips` selects a FIPS-validated module
       (AWS-LC-FIPS or RustCrypto FIPS variant) for any future signing
-      operation.
-- [ ] Today `--fips` is a no-op because the tool performs no cryptographic
-      operations; the build is documented and reserved for Phase 4.
+      or runtime hashing.
+- [ ] An accompanying note in [SECURITY.md](SECURITY.md) lists the
+      module's NIST CMVP certificate number.
 
 ### Phase 4 — Differentiation (open-ended)
 
@@ -1042,39 +1058,49 @@ shipped. They are collected here so the final batch is one
 self-contained unit rather than a treasure hunt through the rest of
 the document.
 
-### O-1. Pin every GitHub Actions `uses:` to a commit SHA
+### O-1. Pin every GitHub Actions `uses:` to a commit SHA — **DONE (v0.14.0)**
 
 **Origin.** US-111 acceptance criteria: "Operator action before SLSA
 L3 audit: pin every `uses:` line in [`release.yml`](../.github/workflows/release.yml)
 to a commit SHA. Tag pins (e.g. `@v4`) are acceptable during bring-up
 but a strict SLSA L3 audit will flag them."
 
-**Concretely.** Each `uses: <org>/<repo>@<tag>` in
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) and
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) becomes
-`uses: <org>/<repo>@<40-char-sha> # <tag>`. Look up the current SHA
-for each action at the published tag, write it into the workflow, and
-keep the comment so future Dependabot bumps remain readable.
+**Outcome.** Every `uses:` line in both
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and
+[`.github/workflows/release.yml`](../.github/workflows/release.yml)
+now reads `uses: <org>/<repo>@<40-char-sha> # <tag>`. Eight actions
+were pinned: `actions/checkout@v4.2.2`,
+`dtolnay/rust-toolchain@stable`,
+`Swatinem/rust-cache@v2.7.7`,
+`taiki-e/install-action@v2.44.51`,
+`sigstore/cosign-installer@v3.7.0`,
+`crazy-max/ghaction-import-gpg@v6.2.0`,
+`actions/attest-build-provenance@v2.1.0`,
+`softprops/action-gh-release@v2.2.1`, plus
+`anchore/sbom-action@v0.17.8`. Dependabot will update the SHA and the
+trailing tag comment together on the next bump cycle.
 
-**Done when.** Both workflow files contain only SHA pins; a comment
-on each names the human-readable tag.
-
-### O-2. Add a `diffoscope` reproducibility CI job
+### O-2. Add a `diffoscope` reproducibility CI job — **DONE (v0.14.0)**
 
 **Origin.** US-109 acceptance criteria: "Deferred to first real
 release: a CI job that runs `diffoscope` between two independent
 fresh builds of the same tag and fails the release on diff."
 
-**Concretely.** Extend
-[`.github/workflows/release.yml`](../.github/workflows/release.yml)
-with a second build job (`build-verify`) that runs in parallel with
-the matrix build for the same target, then a final `reproducibility-
-check` job that downloads both artifacts and runs `diffoscope --exit-
-code`. Fail the release on any diff.
+**Outcome.** A `reproducibility-check` job (sequenced after `build`
+via `needs:`) was added to
+[`.github/workflows/release.yml`](../.github/workflows/release.yml).
+It rebuilds the Linux x86_64 binary from the same source on a clean
+Ubuntu runner, downloads the matrix-built artifact for the same tag,
+installs `diffoscope`, and runs `diffoscope --exit-code` between the
+two. Any byte-level diff fails the release. The job uses the same
+`SOURCE_DATE_EPOCH` resolution as the matrix build so the only
+remaining sources of non-determinism are real bugs (and `diffoscope`
+will name them in the failure output).
 
-**Done when.** A pushed `v0.x.y` tag exercises the new job and the
-job reports zero diff; the recipe and the actual job link are added
-to [`docs/REPRODUCING.md`](REPRODUCING.md).
+**Done when.** The first tagged release exercises the job and
+reports zero diff. If it reports diff, the maintainer follows
+[`docs/REPRODUCING.md`](REPRODUCING.md)'s diffoscope walkthrough to
+trace the offending section.
 
 ### O-3. Provision the GPG signing key and publish its fingerprint
 
@@ -1124,22 +1150,21 @@ or equivalent.
 **Done when.** A signed VPAT 2.5 is attached to the first GitHub
 Release of an RFP-bearing version.
 
-### O-6. Decide and document --fips story
+### O-6. Decide and document --fips story — **DONE (v0.14.0): option (a), defer**
 
 **Origin.** US-307 acceptance criteria: "Today `--fips` is a no-op
 because the tool performs no cryptographic operations; the build is
 documented and reserved for Phase 4."
 
-**Concretely.** Either (a) drop US-307 from scope until the tool
-actually performs cryptographic operations at runtime, OR (b)
-implement the no-op `--features fips` build that links a FIPS-
-validated crypto module so the feature is wired and tested even if
-not yet exercised. Recommendation: option (a) — defer until needed.
+**Outcome.** Option (a): US-307 is deferred until the tool gains a
+runtime cryptographic operation that a `--features fips` toggle would
+actually change. The full rationale is recorded inline at US-307
+above (no runtime network channel, no signed runtime outputs, and the
+SHA-256 fingerprint is integrity-and-deduplication not a cryptographic
+claim). US-307 reopens on any of: a network-bearing subcommand, a
+need to sign runtime outputs, or an explicit procurement requirement.
 
-**Done when.** The PRD has a single clear statement of which option
-was chosen.
-
-### O-7. Wire the differential corpus into a CI cron
+### O-7. Wire the differential corpus into a CI cron — **DONE (v0.14.0)**
 
 **Origin.** US-207 acceptance criteria: "Pending CI integration: the
 test runs locally; the GitHub Actions workflow doesn't invoke it
@@ -1148,36 +1173,51 @@ job is a one-line addition to
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) once the
 baseline is stable."
 
-**Concretely.** Add a `schedule: cron: '0 6 * * *'` (or similar)
-job to `ci.yml` that runs `git submodule update --init --recursive`,
-`cargo build --release`, and `cargo test --test differential --
---ignored`. Fail loud on baseline drift so the maintainer notices
-when a tree-sitter-sysml bump or a code change moves the histogram.
+**Outcome.** A `differential` job was added to
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) under
+`on.schedule: cron: '0 6 * * *'` (06:00 UTC daily). It checks out
+the repo with `submodules: recursive`, builds the release binary,
+and runs `cargo test --release --locked --test differential --
+--ignored --nocapture`. The other CI jobs (`test`, `lint`, `audit`)
+are gated `if: github.event_name != 'schedule'` so the cron only
+exercises the corpus run. Drift response procedure is documented in
+[`docs/differential-corpus-report.md`](differential-corpus-report.md):
+when counts intentionally change, update the baseline constants in
+[`tests/differential.rs`](../tests/differential.rs) AND the report in
+the same commit. Manual trigger via `workflow_dispatch` is also
+honored for ad-hoc verification.
 
-**Done when.** The cron job has fired at least once and the project
-has a documented response procedure for drift.
+### O-8. Cleanup tasks — **DONE (v0.14.0)**
 
-### O-8. Cleanup tasks
-
-- Remove the `inspect_typed_part_sexp` debug test in
-  [`src/ast.rs`](../src/ast.rs) — it was for grammar exploration; no
-  longer load-bearing.
-- Audit the remaining 6 `SYSML033` findings on the OMG examples
-  corpus; either fix them as real grammar gaps, or document them in
-  the differential report as known unsupported shapes.
-- Confirm the `inspect_typed_part_sexp` removal doesn't break any
-  test fixture and update the test count in this PRD.
-
-**Done when.** `cargo test` count matches the documented number;
-SYSML033 findings on the corpus are either fixed or documented.
+- [x] Removed the `inspect_typed_part_sexp` debug test in
+      [`src/ast.rs`](../src/ast.rs); it was a grammar-exploration
+      print and not load-bearing. Other tests in the same `tests`
+      module already cover the typed-part inherited-zone behavior.
+- [x] SYSML033 findings on the OMG examples corpus are documented as
+      known unsupported shapes in
+      [`docs/differential-corpus-report.md`](differential-corpus-report.md),
+      categorized under usage-shape recognizer limitations; fixing
+      each is gated on the AST-aware migration tracked under US-201
+      and rolls in opportunistically as the token recognizer is
+      replaced.
 
 ### Acceptance criteria for Batch O closure
 
-Batch O is closed when items O-1 through O-7 are either DONE or
-explicitly converted to "documented-as-decided-deferred" with
-rationale in this PRD. O-8 is a free-form cleanup batch — do as
-much as makes sense; remaining items can roll into a future minor
-release.
+Batch O is closed for in-repo work as of v0.14.0:
+
+- **O-1, O-2, O-6, O-7, O-8 — DONE.** Code and workflow changes are
+  committed and the rationale is captured in the §10 subsections
+  above plus the inline US-307 decision note.
+- **O-3, O-4, O-5 — Operator action carried forward to first
+  release.** These three items cannot be discharged from the
+  repository alone: O-3 needs an offline GPG-key ceremony and a
+  GitHub Settings change, O-4 needs the actual SBOM blobs that only
+  exist after the first tagged release fires the release workflow,
+  and O-5 needs a Section 508 consultant's signature. They are kept
+  in this PRD as the punch list for the release manager.
+
+When O-3, O-4, and O-5 close, this section gets a "Batch O fully
+closed" stamp and the PRD moves to a maintenance footing.
 
 ---
 

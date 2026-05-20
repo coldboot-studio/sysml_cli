@@ -12,21 +12,23 @@ use crate::diag::{Diagnostic, Severity, ValidationResult};
 pub fn emit(results: &[ValidationResult], fail_on_warning: bool) -> String {
     let total_tests: usize = results
         .iter()
-        .map(|result| result.diagnostics.iter().filter(|d| !d.is_suppressed()).count())
+        .map(|result| {
+            result
+                .diagnostics
+                .iter()
+                .filter(|d| !d.is_suppressed())
+                .count()
+        })
         .sum();
     let total_failures: usize = results.iter().map(ValidationResult::error_count).sum();
     let total_warnings: usize = results.iter().map(ValidationResult::warning_count).sum();
-    let total_errors_attr = if fail_on_warning {
-        total_warnings
-    } else {
-        0
-    };
+    let total_errors_attr = if fail_on_warning { total_warnings } else { 0 };
 
     let mut output = String::new();
     output.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    write!(
+    writeln!(
         output,
-        "<testsuites name=\"sysml-validate\" tests=\"{total_tests}\" failures=\"{total_failures}\" errors=\"{total_errors_attr}\">\n"
+        "<testsuites name=\"sysml-validate\" tests=\"{total_tests}\" failures=\"{total_failures}\" errors=\"{total_errors_attr}\">"
     )
     .expect("write to String");
 
@@ -49,9 +51,9 @@ pub fn emit(results: &[ValidationResult], fail_on_warning: bool) -> String {
             0
         };
         let suite_path = result.path.to_string_lossy();
-        write!(
+        writeln!(
             output,
-            "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" errors=\"{}\" skipped=\"0\" time=\"0\">\n",
+            "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" errors=\"{}\" skipped=\"0\" time=\"0\">",
             xml_attr_escape(&suite_path),
             visible.len(),
             suite_failures,
@@ -83,9 +85,9 @@ fn emit_testcase(
         .unwrap_or_default();
     let name = format!("{}{} ({})", diagnostic.code, location, index);
 
-    write!(
+    writeln!(
         output,
-        "    <testcase classname=\"{}\" name=\"{}\" time=\"0\">\n",
+        "    <testcase classname=\"{}\" name=\"{}\" time=\"0\">",
         xml_attr_escape(suite_path),
         xml_attr_escape(&name),
     )
@@ -102,9 +104,9 @@ fn emit_testcase(
 }
 
 fn emit_failure(output: &mut String, diagnostic: &Diagnostic) {
-    write!(
+    writeln!(
         output,
-        "      <failure type=\"{}\" message=\"{}\">{}</failure>\n",
+        "      <failure type=\"{}\" message=\"{}\">{}</failure>",
         xml_attr_escape(diagnostic.code),
         xml_attr_escape(&diagnostic.message),
         xml_text_escape(&diagnostic.message),
@@ -113,9 +115,9 @@ fn emit_failure(output: &mut String, diagnostic: &Diagnostic) {
 }
 
 fn emit_error(output: &mut String, diagnostic: &Diagnostic) {
-    write!(
+    writeln!(
         output,
-        "      <error type=\"{}\" message=\"{}\">{}</error>\n",
+        "      <error type=\"{}\" message=\"{}\">{}</error>",
         xml_attr_escape(diagnostic.code),
         xml_attr_escape(&diagnostic.message),
         xml_text_escape(&diagnostic.message),
@@ -124,9 +126,9 @@ fn emit_error(output: &mut String, diagnostic: &Diagnostic) {
 }
 
 fn emit_system_out(output: &mut String, diagnostic: &Diagnostic) {
-    write!(
+    writeln!(
         output,
-        "      <system-out>{} {}: {}</system-out>\n",
+        "      <system-out>{} {}: {}</system-out>",
         diagnostic.severity.as_str().to_ascii_uppercase(),
         diagnostic.code,
         xml_text_escape(&diagnostic.message),

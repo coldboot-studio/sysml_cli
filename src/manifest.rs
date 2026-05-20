@@ -172,14 +172,13 @@ mod tests {
     fn respects_root_field() {
         let dir = temp_dir("root");
         fs::create_dir_all(dir.join("model")).unwrap();
-        fs::write(
-            dir.join(".project.json"),
-            r#"{"name":"x","root":"model"}"#,
-        )
-        .unwrap();
+        fs::write(dir.join(".project.json"), r#"{"name":"x","root":"model"}"#).unwrap();
         let loaded = discover(&dir).unwrap();
         let root = loaded.source_root.unwrap();
-        assert!(root.ends_with("model"), "expected root ending in 'model', got {root:?}");
+        assert!(
+            root.ends_with("model"),
+            "expected root ending in 'model', got {root:?}"
+        );
     }
 
     #[test]

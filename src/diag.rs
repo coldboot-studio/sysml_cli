@@ -87,10 +87,12 @@ impl Diagnostic {
         let digest = hasher.finalize();
         // 16 hex chars (64 bits) is enough collision resistance for a
         // per-project diagnostic identifier and is short enough to read.
-        digest[..8]
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect()
+        use std::fmt::Write as _;
+        let mut out = String::with_capacity(16);
+        for byte in &digest[..8] {
+            write!(out, "{byte:02x}").expect("write to String");
+        }
+        out
     }
 }
 

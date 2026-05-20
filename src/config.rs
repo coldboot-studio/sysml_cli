@@ -153,7 +153,10 @@ mod tests {
             loaded.config.rule_override("SYSML040"),
             Some(RuleOverride::Level(Severity::Error))
         );
-        assert_eq!(loaded.config.rule_override("SYSML041"), Some(RuleOverride::Off));
+        assert_eq!(
+            loaded.config.rule_override("SYSML041"),
+            Some(RuleOverride::Off)
+        );
         assert_eq!(loaded.config.rule_override("SYSML999"), None);
     }
 

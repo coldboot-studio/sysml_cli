@@ -38,9 +38,8 @@ pub const EMBEDDED_LIBRARY_RELEASE: &str = "2026-04";
 /// Embed the vendored library at compile time. Path is relative to
 /// `Cargo.toml`. If the submodule is not initialized, the build fails
 /// here with a clear pointer back to README.
-static EMBEDDED_LIBRARY: Dir<'_> = include_dir!(
-    "$CARGO_MANIFEST_DIR/vendor/sysml-v2-release/sysml.library"
-);
+static EMBEDDED_LIBRARY: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/vendor/sysml-v2-release/sysml.library");
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)] // Fields are part of the public LibraryFile API consumed by Phase 2+ work.
@@ -62,11 +61,12 @@ pub struct LibraryLoader {
 impl LibraryLoader {
     /// Load the embedded standard library. Always succeeds.
     pub fn embedded() -> Self {
-        let mut loader = Self::default();
-        loader.source_description = format!(
-            "embedded SysML v2 standard library (OMG release {})",
-            EMBEDDED_LIBRARY_RELEASE
-        );
+        let mut loader = Self {
+            source_description: format!(
+                "embedded SysML v2 standard library (OMG release {EMBEDDED_LIBRARY_RELEASE})"
+            ),
+            ..Self::default()
+        };
         let entries = EMBEDDED_LIBRARY
             .find("**/*")
             .expect("static glob pattern is valid");
@@ -97,8 +97,10 @@ impl LibraryLoader {
                 root.display()
             ));
         }
-        let mut loader = Self::default();
-        loader.source_description = format!("library from {}", root.display());
+        let mut loader = Self {
+            source_description: format!("library from {}", root.display()),
+            ..Self::default()
+        };
         ingest_dir(&mut loader, root, root)?;
         loader.finalize();
         Ok(loader)
@@ -166,11 +168,10 @@ impl LibraryLoader {
 }
 
 fn ingest_dir(loader: &mut LibraryLoader, root: &Path, dir: &Path) -> Result<(), String> {
-    for entry in fs::read_dir(dir)
-        .map_err(|error| format!("unable to read '{}': {error}", dir.display()))?
+    for entry in
+        fs::read_dir(dir).map_err(|error| format!("unable to read '{}': {error}", dir.display()))?
     {
-        let entry =
-            entry.map_err(|error| format!("unable to read directory entry: {error}"))?;
+        let entry = entry.map_err(|error| format!("unable to read directory entry: {error}"))?;
         let path = entry.path();
         if path.is_dir() {
             ingest_dir(loader, root, &path)?;
@@ -343,7 +344,9 @@ mod tests {
         let library = LibraryLoader::embedded();
         assert!(library.file_count() > 0);
         assert!(library.declaration_count() > 0);
-        assert!(library.source_description().contains(EMBEDDED_LIBRARY_RELEASE));
+        assert!(library
+            .source_description()
+            .contains(EMBEDDED_LIBRARY_RELEASE));
     }
 
     #[test]
@@ -352,7 +355,14 @@ mod tests {
         // Foundational SysML v2 standard library types every real model
         // touches. Note: `StateAction` is the actual base type the
         // `state def Foo` syntactic shorthand resolves to, not `State`.
-        for name in ["Part", "Item", "Port", "Action", "StateAction", "RequirementCheck"] {
+        for name in [
+            "Part",
+            "Item",
+            "Port",
+            "Action",
+            "StateAction",
+            "RequirementCheck",
+        ] {
             assert!(
                 library.contains_unqualified(name),
                 "expected '{name}' in unqualified library index"

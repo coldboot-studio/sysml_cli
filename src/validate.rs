@@ -87,7 +87,6 @@ fn validate_text_into(
     project: &ProjectIndex,
     mut result: ValidationResult,
 ) -> ValidationResult {
-
     let scan = Scanner::new(path, text).scan();
     let tokens = scan.tokens;
     let mut suppressions = scan.suppressions;
@@ -458,8 +457,7 @@ fn validate_reference_candidates(
                 || project.contains_unqualified(&candidate.value)
                 || imported_leaves.contains(candidate.value.as_str())
                 || wildcard_namespaces.iter().any(|namespace| {
-                    library
-                        .contains_qualified(&format!("{namespace}::{}", candidate.value))
+                    library.contains_qualified(&format!("{namespace}::{}", candidate.value))
                         || project.namespace_contains(namespace, &candidate.value)
                 })
         };
@@ -567,8 +565,11 @@ fn validate_specialization_structure(
                         cursor += 1;
                         continue;
                     }
-                    let code: &'static str =
-                        if is_specialization { "SYSML212" } else { "SYSML213" };
+                    let code: &'static str = if is_specialization {
+                        "SYSML212"
+                    } else {
+                        "SYSML213"
+                    };
                     let verb = if is_specialization {
                         "specialize"
                     } else {
@@ -601,7 +602,11 @@ fn validate_specialization_structure(
                 || project.contains_unqualified(target_leaf)
         };
         if !resolves {
-            let code: &'static str = if is_specialization { "SYSML210" } else { "SYSML211" };
+            let code: &'static str = if is_specialization {
+                "SYSML210"
+            } else {
+                "SYSML211"
+            };
             let kind = if is_specialization {
                 "Specialization"
             } else {
@@ -1086,8 +1091,11 @@ mod tests {
 
     #[test]
     fn project_index_resolves_cross_file_reference() {
-        let project =
-            ProjectIndex::from_tokens(Some("Engines".into()), vec!["Engine".into()], Path::new("/x"));
+        let project = ProjectIndex::from_tokens(
+            Some("Engines".into()),
+            vec!["Engine".into()],
+            Path::new("/x"),
+        );
         let result = validate_with_project(
             "package P { part e :> Engines::Engine; }",
             ".sysml",
@@ -1113,8 +1121,10 @@ mod tests {
             true,
         );
         assert!(
-            result.diagnostics.iter().any(|d| d.code == "SYSML040"
-                && d.message.contains("Whell")),
+            result
+                .diagnostics
+                .iter()
+                .any(|d| d.code == "SYSML040" && d.message.contains("Whell")),
             "typed-usage typo 'Whell' should be flagged; got: {:?}",
             result.diagnostics
         );
@@ -1126,15 +1136,13 @@ mod tests {
         // `Real` lives in the embedded ScalarValues library and should
         // resolve cleanly. Negative case: `attribute mass : Bogus123;`
         // should still warn.
-        let clean =
-            validate_temp("package P { attribute mass : Real; }", ".sysml", true);
+        let clean = validate_temp("package P { attribute mass : Real; }", ".sysml", true);
         assert!(
             !clean.diagnostics.iter().any(|d| d.code == "SYSML040"),
             "Real should resolve from library; got: {:?}",
             clean.diagnostics
         );
-        let dirty =
-            validate_temp("package P { attribute mass : Bogus123; }", ".sysml", true);
+        let dirty = validate_temp("package P { attribute mass : Bogus123; }", ".sysml", true);
         assert!(
             dirty.diagnostics.iter().any(|d| d.code == "SYSML040"),
             "Bogus123 should warn; got: {:?}",
@@ -1152,8 +1160,17 @@ mod tests {
             ".sysml",
             false,
         );
-        let sysml210: Vec<_> = result.diagnostics.iter().filter(|d| d.code == "SYSML210").collect();
-        assert_eq!(sysml210.len(), 1, "expected exactly one SYSML210; got: {:?}", result.diagnostics);
+        let sysml210: Vec<_> = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "SYSML210")
+            .collect();
+        assert_eq!(
+            sysml210.len(),
+            1,
+            "expected exactly one SYSML210; got: {:?}",
+            result.diagnostics
+        );
         assert_eq!(sysml210[0].severity, Severity::Error);
     }
 
@@ -1174,11 +1191,7 @@ mod tests {
     #[test]
     fn resolved_specialization_target_does_not_error() {
         // `:> Part` resolves via the embedded library; no SYSML210.
-        let result = validate_temp(
-            "package P { part def Engine :> Part; }",
-            ".sysml",
-            false,
-        );
+        let result = validate_temp("package P { part def Engine :> Part; }", ".sysml", false);
         assert!(
             !result.diagnostics.iter().any(|d| d.code == "SYSML210"),
             "library-resolved target should not fire SYSML210; got: {:?}",
@@ -1191,11 +1204,7 @@ mod tests {
         // Batch J: demoted from error to warning because the same token
         // pattern matches both real self-reference bugs AND the
         // legitimate redefinition-of-inherited-member case.
-        let result = validate_temp(
-            "package P { part def Engine :> Engine; }",
-            ".sysml",
-            false,
-        );
+        let result = validate_temp("package P { part def Engine :> Engine; }", ".sysml", false);
         let hit = result
             .diagnostics
             .iter()
@@ -1299,9 +1308,7 @@ mod tests {
         let path = dir.join("model.sysml");
         fs::write(&path, "package P { part engine :> Missing; }").expect("write");
         let mut config = Config::default();
-        config
-            .rules
-            .insert("SYSML040".into(), "error".into());
+        config.rules.insert("SYSML040".into(), "error".into());
         let library = LibraryLoader::embedded();
         let project = ProjectIndex::empty();
         let result = validate_native(&path, true, &config, &library, &project);

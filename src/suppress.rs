@@ -79,7 +79,9 @@ pub fn parse_directive(
             return Some(Err(DirectiveParseError {
                 line,
                 column,
-                message: format!("unknown directive '{other}'; expected 'disable' or 'disable-next-line'"),
+                message: format!(
+                    "unknown directive '{other}'; expected 'disable' or 'disable-next-line'"
+                ),
             }));
         }
     };
@@ -158,7 +160,9 @@ pub fn apply_suppressions(
             }
             let matches_rule = match &suppression.rules {
                 SuppressionRules::All => true,
-                SuppressionRules::Specific(codes) => codes.iter().any(|code| code == diagnostic.code),
+                SuppressionRules::Specific(codes) => {
+                    codes.iter().any(|code| code == diagnostic.code)
+                }
             };
             if matches_rule {
                 suppression.used = true;
@@ -208,8 +212,13 @@ mod tests {
 
     #[test]
     fn parses_same_line_specific() {
-        let result = parse_directive(5, 1, "sysml-validate: disable=SYSML041").unwrap().unwrap();
-        assert!(matches!(result.applies_to_line, SuppressionScope::SameLine(5)));
+        let result = parse_directive(5, 1, "sysml-validate: disable=SYSML041")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            result.applies_to_line,
+            SuppressionScope::SameLine(5)
+        ));
         assert_eq!(
             result.rules,
             SuppressionRules::Specific(vec!["SYSML041".into()])
@@ -218,7 +227,9 @@ mod tests {
 
     #[test]
     fn parses_disable_all() {
-        let result = parse_directive(5, 1, "sysml-validate: disable=all").unwrap().unwrap();
+        let result = parse_directive(5, 1, "sysml-validate: disable=all")
+            .unwrap()
+            .unwrap();
         assert_eq!(result.rules, SuppressionRules::All);
     }
 
@@ -305,14 +316,17 @@ mod tests {
         let mut suppressions = vec![Suppression {
             directive_line: 5,
             directive_column: 1,
-            applies_to_line: SuppressionScope::NextNonBlankLine {
-                directive_line: 5,
-            },
+            applies_to_line: SuppressionScope::NextNonBlankLine { directive_line: 5 },
             rules: SuppressionRules::All,
             used: false,
         }];
         // Non-blank lines: 3, 5, 7 — directive on 5, next is 7.
-        let unused = apply_suppressions(&mut diagnostics, &mut suppressions, &[3, 5, 7], Path::new("/x"));
+        let unused = apply_suppressions(
+            &mut diagnostics,
+            &mut suppressions,
+            &[3, 5, 7],
+            Path::new("/x"),
+        );
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].is_suppressed());
         assert!(unused.is_empty());

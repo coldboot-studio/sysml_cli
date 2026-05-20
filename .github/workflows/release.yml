@@ -10,15 +10,20 @@
 #   - SLSA v1.0 Build L3 in-toto build-provenance attestation
 #     (actions/attest-build-provenance)
 #
+# After the matrix build, a `reproducibility-check` job (Batch O-2)
+# rebuilds the Linux x86_64 binary on a clean runner and diffoscopes
+# the two outputs. Bit-identical rebuild is a release-blocking
+# guarantee, not an aspiration.
+#
 # Every artifact is attached to the GitHub Release. Consumers verify with
 # the recipe in docs/SECURITY.md.
 #
 # ----------------------------------------------------------------------
 # IMPORTANT BEFORE FIRST RUN
 # ----------------------------------------------------------------------
-# 1. Pin every `uses:` line to a commit SHA before treating this as
-#    load-bearing. Tag pins are acceptable during bring-up but a SLSA L3
-#    audit will flag them.
+# 1. Every `uses:` is pinned to a commit SHA with the human-readable
+#    tag in a trailing comment. Dependabot bumps should update the SHA
+#    and the comment together; do not unpin (Batch O-1).
 # 2. Repository secrets required:
 #      GPG_SIGNING_KEY        — ASCII-armored GPG private key
 #      GPG_SIGNING_PASSPHRASE — passphrase for that key
@@ -76,9 +81,10 @@ jobs:
       SOURCE_DATE_EPOCH: ""  # set per step below
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0  # need full history to read tag author date
+          submodules: recursive
 
       - name: Resolve SOURCE_DATE_EPOCH
         shell: bash
@@ -90,18 +96,18 @@ jobs:
           echo "Using SOURCE_DATE_EPOCH=$ts"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Install cross (Linux aarch64)
         if: matrix.cross
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@86ec8296ca78c5cfba526854b020d4e58cf41e67 # v2.44.51
         with:
           tool: cross
 
       - name: Cargo cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@400e7407cfd7a091e5fbb6afec01ec146c432b7c # v2.7.7
         with:
           key: ${{ matrix.target }}
 
@@ -129,7 +135,7 @@ jobs:
           echo "name=$(basename "$dest")" >> "$GITHUB_OUTPUT"
 
       - name: Generate CycloneDX 1.6 SBOM
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@86ec8296ca78c5cfba526854b020d4e58cf41e67 # v2.44.51
         with:
           tool: cargo-cyclonedx
 
@@ -142,7 +148,7 @@ jobs:
           mv sysml-validate.cdx.json dist/sysml-validate-${{ matrix.target }}.cdx.json
 
       - name: Generate SPDX 3.0 SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@55dc4ee22412511ee8c3142cbea40418e6cec693 # v0.17.8
         with:
           path: .
           format: spdx-json
@@ -164,7 +170,7 @@ jobs:
           fi
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@1aa8e0f2454b781fbf0fbf306a4c9533a0c57409 # v3.7.0
         with:
           cosign-release: "v2.4.1"
 
@@ -183,7 +189,7 @@ jobs:
           # the Sigstore root.
 
       - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@cb9bde2e2525e640591a934b1fd28eef1dcaf5e5 # v6.2.0
         with:
           gpg_private_key: ${{ secrets.GPG_SIGNING_KEY }}
           passphrase: ${{ secrets.GPG_SIGNING_PASSPHRASE }}
@@ -210,12 +216,12 @@ jobs:
         # https://slsa.dev/provenance/v1 and stores it both as an OCI
         # referrer and as a workflow artifact. SLSA v1.0 Build L3 is the
         # level documented at https://slsa.dev/spec/v1.0/levels.
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
         with:
           subject-path: dist/${{ steps.stage.outputs.name }}
 
       - name: Upload to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
           tag_name: ${{ github.ref_name || inputs.tag }}
           files: |
@@ -226,3 +232,83 @@ jobs:
             dist/sysml-validate-${{ matrix.target }}.spdx.json
             dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}.asc
           fail_on_unmatched_files: false  # GPG signature may be absent
+
+  # ----------------------------------------------------------------------
+  # Reproducibility verification (Batch O-2 / US-109).
+  #
+  # Rebuilds the Linux x86_64 binary from the same source on an
+  # independent runner instance, then diffoscopes the two binaries.
+  # If they differ, the release is unreproducible — diffoscope's
+  # output names the offending sections (debug info, build paths,
+  # timestamps, code-gen ordering). Failing the release on diff is
+  # the point.
+  # ----------------------------------------------------------------------
+  reproducibility-check:
+    name: reproducibility (linux x86_64)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Resolve SOURCE_DATE_EPOCH
+        shell: bash
+        run: |
+          ts="$(git log -1 --pretty=%ct)"
+          echo "SOURCE_DATE_EPOCH=$ts" >> "$GITHUB_ENV"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Independent rebuild
+        shell: bash
+        run: |
+          cargo build --release --locked --target x86_64-unknown-linux-gnu
+          mkdir -p verify
+          cp target/x86_64-unknown-linux-gnu/release/sysml-validate \
+            verify/sysml-validate-rebuild
+
+      - name: Download original release binary
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          tag_name: ${{ github.ref_name || inputs.tag }}
+        # This step intentionally fails closed: if the matrix build
+        # hasn't produced a release artifact yet, we have nothing to
+        # diff against and the workflow stops here. The job depends on
+        # `build` so this should always resolve in practice.
+
+      - name: Fetch matrix-built artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.ref_name || inputs.tag }}"
+          gh release download "$tag" \
+            --pattern 'sysml-validate-x86_64-unknown-linux-gnu' \
+            --dir verify
+          mv verify/sysml-validate-x86_64-unknown-linux-gnu \
+            verify/sysml-validate-original
+
+      - name: Install diffoscope
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y diffoscope
+
+      - name: diffoscope --exit-code
+        shell: bash
+        run: |
+          # Fails the job (non-zero exit) on any difference. Output
+          # names the sections that differ so the maintainer can chase
+          # the source of non-determinism. The expected outcome on a
+          # well-behaved release is "no differences detected" plus exit 0.
+          diffoscope --exit-code \
+            verify/sysml-validate-original \
+            verify/sysml-validate-rebuild

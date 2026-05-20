@@ -78,11 +78,7 @@ pub fn extract_imports(tokens: &[Token]) -> Vec<ParsedImport> {
         // Visibility prefix is optional and precedes `import`.
         let (visibility, advance) = read_optional_visibility(tokens, cursor);
         let import_index = cursor + advance;
-        if tokens
-            .get(import_index)
-            .map(|token| token.value.as_str())
-            != Some("import")
-        {
+        if tokens.get(import_index).map(|token| token.value.as_str()) != Some("import") {
             cursor += 1;
             continue;
         }
@@ -121,12 +117,14 @@ pub fn extract_imports(tokens: &[Token]) -> Vec<ParsedImport> {
 }
 
 fn read_optional_visibility(tokens: &[Token], start: usize) -> (Visibility, usize) {
-    let visibility = tokens.get(start).and_then(|token| match token.value.as_str() {
-        "public" => Some(Visibility::Public),
-        "private" => Some(Visibility::Private),
-        "protected" => Some(Visibility::Protected),
-        _ => None,
-    });
+    let visibility = tokens
+        .get(start)
+        .and_then(|token| match token.value.as_str() {
+            "public" => Some(Visibility::Public),
+            "private" => Some(Visibility::Private),
+            "protected" => Some(Visibility::Protected),
+            _ => None,
+        });
     match visibility {
         Some(v) => (v, 1),
         // KerML default visibility on an import without explicit marker is
@@ -195,7 +193,7 @@ fn parse_import_declaration(tokens: &[Token], start: usize) -> Option<(ParsedImp
     Some((
         ParsedImport {
             visibility: Visibility::Private, // overwritten by caller
-            import_all: false,                // overwritten by caller
+            import_all: false,               // overwritten by caller
             qualified_path: path,
             shape,
         },
@@ -241,7 +239,10 @@ mod tests {
         assert_eq!(imports[0].qualified_string(), "Parts::Part");
         assert_eq!(imports[0].membership_leaf(), Some("Part"));
         assert_eq!(imports[0].visibility, Visibility::Private);
-        assert_eq!(imports[0].shape, ImportShape::Membership { recursive: false });
+        assert_eq!(
+            imports[0].shape,
+            ImportShape::Membership { recursive: false }
+        );
     }
 
     #[test]
@@ -256,7 +257,10 @@ mod tests {
     fn parses_namespace_wildcard() {
         let imports = parse("import Parts::*;");
         assert_eq!(imports.len(), 1);
-        assert_eq!(imports[0].shape, ImportShape::Namespace { recursive: false });
+        assert_eq!(
+            imports[0].shape,
+            ImportShape::Namespace { recursive: false }
+        );
         assert_eq!(imports[0].namespace_root(), Some("Parts".into()));
         assert!(imports[0].membership_leaf().is_none());
     }
@@ -265,7 +269,10 @@ mod tests {
     fn parses_recursive_namespace_wildcard() {
         let imports = parse("import Parts::**;");
         assert_eq!(imports.len(), 1);
-        assert_eq!(imports[0].shape, ImportShape::Membership { recursive: true });
+        assert_eq!(
+            imports[0].shape,
+            ImportShape::Membership { recursive: true }
+        );
         assert_eq!(imports[0].qualified_string(), "Parts");
     }
 
@@ -299,7 +306,10 @@ mod tests {
         assert_eq!(imports.len(), 3);
         assert_eq!(imports[0].visibility, Visibility::Private);
         assert_eq!(imports[1].qualified_string(), "Baz::Quux");
-        assert_eq!(imports[2].shape, ImportShape::Namespace { recursive: false });
+        assert_eq!(
+            imports[2].shape,
+            ImportShape::Namespace { recursive: false }
+        );
     }
 
     #[test]

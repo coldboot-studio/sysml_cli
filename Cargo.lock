@@ -355,7 +355,7 @@ dependencies = [
 
 [[package]]
 name = "sysml-validate"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "include_dir",
  "lsp-server",

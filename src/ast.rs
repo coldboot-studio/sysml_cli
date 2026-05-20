@@ -73,7 +73,10 @@ fn walk_for_errors(node: Node<'_>, source: &str, path: &Path, out: &mut Vec<Diag
         out.push(Diagnostic::new(
             Severity::Warning,
             "SYSML100",
-            format!("Parser expected a `{}` here but did not find one.", node.kind()),
+            format!(
+                "Parser expected a `{}` here but did not find one.",
+                node.kind()
+            ),
             path,
             Some(node_position(node)),
         ));
@@ -234,10 +237,9 @@ mod tests {
 
     #[test]
     fn collects_multiple_declarations() {
-        let result = parse(
-            "package P { part def Engine; attribute mass; part def Wheel { part hub; } }",
-        )
-        .unwrap();
+        let result =
+            parse("package P { part def Engine; attribute mass; part def Wheel { part hub; } }")
+                .unwrap();
         let names = collect_declared_names(&result);
         for expected in ["Engine", "mass", "Wheel", "hub", "P"] {
             assert!(names.contains(expected), "missing {expected}: {names:?}");
@@ -264,15 +266,6 @@ mod tests {
         let result = parse(source).unwrap();
         let zones = inherited_member_redefinition_zones(&result);
         assert!(zones.is_empty(), "expected no zones; got: {zones:?}");
-    }
-
-    #[test]
-    fn inspect_typed_part_sexp() {
-        let result = parse(
-            "package P { part def P1 { port po; } part p1 : P1 { port po :>> po; } }",
-        )
-        .unwrap();
-        eprintln!("SEXP: {}", result.tree.root_node().to_sexp());
     }
 
     #[test]

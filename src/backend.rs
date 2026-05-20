@@ -194,15 +194,13 @@ pub fn shlex_split(input: &str) -> Result<Vec<String>, String> {
                 in_double = !in_double;
                 has_token = true;
             }
-            '\\' if in_double => {
-                match chars.peek() {
-                    Some(&next) if matches!(next, '\\' | '"' | '$' | '`') => {
-                        current.push(next);
-                        chars.next();
-                    }
-                    _ => current.push('\\'),
+            '\\' if in_double => match chars.peek() {
+                Some(&next) if matches!(next, '\\' | '"' | '$' | '`') => {
+                    current.push(next);
+                    chars.next();
                 }
-            }
+                _ => current.push('\\'),
+            },
             character if character.is_whitespace() && !in_single && !in_double => {
                 if has_token {
                     argv.push(std::mem::take(&mut current));

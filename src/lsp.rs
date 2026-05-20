@@ -61,7 +61,9 @@ pub fn run() -> Result<(), String> {
     let mut server = Server::new(connection, library);
     server.run_loop()?;
 
-    io_threads.join().map_err(|error| format!("join io: {error}"))?;
+    io_threads
+        .join()
+        .map_err(|error| format!("join io: {error}"))?;
     Ok(())
 }
 
@@ -389,7 +391,9 @@ fn diagnostic_to_lsp(diagnostic: &Diagnostic) -> LspDiagnostic {
     LspDiagnostic {
         range: LspRange { start, end },
         severity: Some(severity_to_lsp(diagnostic.severity)),
-        code: Some(lsp_types::NumberOrString::String(diagnostic.code.to_string())),
+        code: Some(lsp_types::NumberOrString::String(
+            diagnostic.code.to_string(),
+        )),
         code_description: None,
         source: Some("sysml-validate".to_string()),
         message: diagnostic.message.clone(),

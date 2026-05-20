@@ -7,9 +7,9 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::path::PathBuf;
 #[cfg(test)]
 use std::path::Path;
+use std::path::PathBuf;
 
 use crate::ast;
 use crate::lex::{Scanner, Token};
@@ -51,8 +51,7 @@ impl ProjectIndex {
                 continue;
             };
             let scan = Scanner::new(path, &text).scan();
-            let (package, declarations) =
-                extract_declarations_for_project_index(&scan.tokens);
+            let (package, declarations) = extract_declarations_for_project_index(&scan.tokens);
             index.files.push(path.clone());
             for declaration in &declarations {
                 index.unqualified_names.insert(declaration.clone());
@@ -77,9 +76,7 @@ impl ProjectIndex {
                 for name in ast_names {
                     index.unqualified_names.insert(name.clone());
                     if let Some(package) = &package {
-                        index
-                            .qualified_names
-                            .insert(format!("{package}::{name}"));
+                        index.qualified_names.insert(format!("{package}::{name}"));
                         index
                             .package_members
                             .entry(package.clone())
@@ -197,10 +194,7 @@ impl ProjectIndex {
 /// Walk tokens and record every `:>` / `specializes` edge encountered.
 /// Edges are keyed on the most recently seen declared name (the child)
 /// and accumulate all its specialization parents.
-fn harvest_specialization_edges(
-    tokens: &[Token],
-    edges: &mut HashMap<String, Vec<String>>,
-) {
+fn harvest_specialization_edges(tokens: &[Token], edges: &mut HashMap<String, Vec<String>>) {
     use crate::lex::TokenKind;
 
     // Track the most recently declared name so we can attach edges to it.
@@ -231,10 +225,7 @@ fn harvest_specialization_edges(
                             // simplification; full qualified-edge tracking
                             // is a Phase 2.x follow-up.
                             let leaf = read_qualified_leaf(tokens, cursor + 1);
-                            edges
-                                .entry(child.clone())
-                                .or_default()
-                                .push(leaf);
+                            edges.entry(child.clone()).or_default().push(leaf);
                         }
                     }
                 }
@@ -266,11 +257,7 @@ fn read_qualified_leaf(tokens: &[Token], start: usize) -> String {
 /// project context without actually walking the filesystem.
 #[cfg(test)]
 impl ProjectIndex {
-    pub fn from_tokens(
-        package: Option<String>,
-        declarations: Vec<String>,
-        file: &Path,
-    ) -> Self {
+    pub fn from_tokens(package: Option<String>, declarations: Vec<String>, file: &Path) -> Self {
         let mut index = Self::default();
         index.files.push(file.to_path_buf());
         for declaration in &declarations {
@@ -324,7 +311,10 @@ mod tests {
 
     #[test]
     fn namespace_membership_lookup() {
-        let a = temp_file("package Vehicles { part def Engine; part def Wheel; }", ".sysml");
+        let a = temp_file(
+            "package Vehicles { part def Engine; part def Wheel; }",
+            ".sysml",
+        );
         let index = ProjectIndex::build(&[a.clone()]);
         assert!(index.namespace_contains("Vehicles", "Engine"));
         assert!(index.namespace_contains("Vehicles", "Wheel"));
@@ -350,9 +340,7 @@ mod tests {
         let a = temp_file("package P { part def A :> B; }", ".sysml");
         let b = temp_file("package P { part def B :> A; }", ".sysml");
         let index = ProjectIndex::build(&[a.clone(), b.clone()]);
-        let cycle = index
-            .find_specialization_cycle()
-            .expect("expected a cycle");
+        let cycle = index.find_specialization_cycle().expect("expected a cycle");
         assert!(cycle.contains(&"A".to_string()));
         assert!(cycle.contains(&"B".to_string()));
         let _ = fs::remove_file(&a);
