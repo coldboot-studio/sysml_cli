@@ -111,6 +111,53 @@ that invokes the SysML v2 pilot/release tooling.
 > (US-203) and ported Pilot rules (US-205); see
 > [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md).
 
+## What ships to end users
+
+The deliverable is the **release bundle archive**, one per target
+triple, attached to each GitHub Release tag:
+
+```
+sysml-validate-<version>-<target>.tar.gz   (Linux, macOS)
+sysml-validate-<version>-<target>.zip      (Windows)
+```
+
+Each archive is ~1-5 MB compressed and expands to the structured
+tree documented in
+[`docs/compliance/INDEX.md`](docs/compliance/INDEX.md):
+binary + SHA-256 + cosign bundle + GPG signature + CycloneDX SBOM +
+SPDX SBOM + SLSA in-toto provenance + every doc
+([`EXECUTIVE_SUMMARY`](docs/EXECUTIVE_SUMMARY.md),
+[`TECH_MANUAL`](docs/TECH_MANUAL.md),
+[`PRD`](docs/PRD-government-readiness.md),
+[`SECURITY`](docs/SECURITY.md),
+[`OFFLINE`](docs/OFFLINE.md),
+[`THREAT_MODEL`](docs/THREAT_MODEL.md),
+[`REPRODUCING`](docs/REPRODUCING.md),
+[`accessibility`](docs/accessibility.md), full compliance pack) +
+the [agentskills.io agent skill](skills/sysml-validate/) +
+LICENSE/NOTICE/VERSION/README + `BUNDLE-MANIFEST.txt`
+(SHA-256 of every file for whole-tree verification with
+`sha256sum -c`).
+
+**What does NOT ship:** the repository's `target/` (Cargo build
+artifacts), `vendor/` (pinned SysML v2 library submodule —
+already embedded in the binary at build time), `tests/`, `src/`,
+`.github/`, or any other source-tree-only material. Those are
+working state, not deliverables.
+
+To see the deliverable locally without pushing a tag:
+
+```sh
+scripts/build-local-bundle.sh
+# Produces dist/local/bundle/sysml-validate-<version>-<target>.tar.gz
+```
+
+This builds the binary in release mode, assembles the same layout
+CI produces, and packs the archive — minus the cryptographic trust
+artifacts (cosign signature, GPG signature, SLSA attestation) that
+require GitHub OIDC and the project signing key. Real signed
+artifacts come from pushing a `v*` tag.
+
 ## Install
 
 ```powershell

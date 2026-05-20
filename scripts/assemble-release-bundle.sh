@@ -46,6 +46,13 @@ case "$TARGET" in
   *)         EXT="";     ARCHIVE_KIND="tgz"  ;;
 esac
 
+# Local-build escape hatch: `BUNDLE_FORCE_ARCHIVE_KIND=tgz` lets a
+# developer on a Windows host without `zip` still produce a bundle
+# from scripts/build-local-bundle.sh. CI never sets this var.
+if [[ -n "${BUNDLE_FORCE_ARCHIVE_KIND:-}" ]]; then
+  ARCHIVE_KIND="${BUNDLE_FORCE_ARCHIVE_KIND}"
+fi
+
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 BUNDLE_NAME="sysml-validate-${VERSION}-${TARGET}"
 STAGE_DIR="${DIST_DIR}/bundle/${BUNDLE_NAME}"

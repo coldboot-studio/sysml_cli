@@ -157,6 +157,37 @@ Full statements: [SEC], [OFF], [TM], [REP].
   [`rust-toolchain.toml`](../rust-toolchain.toml)), Git with submodule
   support.
 
+### 3.1.1 What ships (and what doesn't)
+
+The deliverable is **one archive per target triple**, attached to each
+GitHub Release tag:
+
+- `sysml-validate-<version>-<target>.tar.gz` on Linux / macOS
+- `sysml-validate-<version>-<target>.zip` on Windows
+
+Each archive is ~1-5 MB compressed and expands to the structured tree
+documented in [`compliance/INDEX.md`](compliance/INDEX.md): the
+binary, all signatures and provenance, both SBOMs, every doc in this
+bundle, the agent skill, LICENSE / NOTICE / VERSION, and a
+`BUNDLE-MANIFEST.txt` listing the SHA-256 of every file.
+
+The source-tree directories `target/`, `vendor/`, `tests/`, `src/`,
+and `.github/` are **not** part of the deliverable. `target/` is
+Cargo's build directory (working state); `vendor/` is a pinned
+submodule of the OMG SysML v2 standard library that is embedded
+into the binary at compile time and not needed at runtime.
+
+Maintainers can produce a local copy of the deliverable (minus the
+cryptographic trust artifacts that require GitHub OIDC) with:
+
+```sh
+scripts/build-local-bundle.sh
+# Output: dist/local/bundle/sysml-validate-<version>-<target>.tar.gz
+```
+
+This is the right way to inspect the layout an end user sees before
+cutting a real release.
+
 ### 3.2 From signed release (recommended)
 
 1. Download the appropriate archive for your target from the GitHub
