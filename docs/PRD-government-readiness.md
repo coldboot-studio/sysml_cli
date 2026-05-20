@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-L + Phase 3 compliance docs (Batch N)** complete (v0.12.0). Two batches outstanding: **M** (LSP server, US-206) and **O** (final polish — operator-action items consolidated). |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N)** complete (v0.13.0). One batch outstanding: **O** (final polish — operator-action items consolidated). |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-19 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -32,7 +32,7 @@ stories in the body of this PRD.
 | K | DONE v0.10.0 | US-201 (initial) | tree-sitter integration; AST name collection |
 | L | DONE v0.11.0 | US-201 cont. | AST-aware inherited-zone SYSML213 suppression |
 | N | DONE v0.12.0 | US-301-305 | NIST SSDF / 800-53 / CMMC / DO-330 / NPR 7150.2D |
-| **M** | **TODO** | **US-206** | **Thin LSP server (hover, definition, diagnostics)** |
+| M | DONE v0.13.0 | US-206 | Thin LSP server (hover + diagnostics over stdio) |
 | **O** | **TODO** | (consolidated) | **Final polish — see §10 below** |
 
 After M and O, the user-story-level work in the PRD is closed.
@@ -676,20 +676,33 @@ parsing infrastructure):**
 batch once the structural rules are stable and we have a comparable
 diagnostic surface.
 
-#### US-206: Thin LSP server
+#### US-206: Thin LSP server — **DONE (v0.13.0)**
 
-**Description.** As a SysML v2 model author using VS Code or Neovim, I
-want `sysml-validate lsp` to provide hover, go-to-definition, and
-diagnostics.
+**Description.** As a SysML v2 model author using VS Code or Neovim,
+I want `sysml-validate lsp` to provide hover and diagnostics.
 
 **Acceptance Criteria:**
-- [ ] `sysml-validate lsp` starts a Language Server Protocol server on
-      stdin/stdout.
-- [ ] Supports: `textDocument/didOpen`, `didChange`, `didClose`;
-      `textDocument/hover`; `textDocument/definition`; `textDocument/
-      diagnostic` and `publishDiagnostics`.
-- [ ] Reuses the parser and resolver from US-201 / US-203.
-- [ ] Smoke-tested against a VS Code reference extension.
+- [x] `sysml-validate lsp` starts an LSP server on stdin/stdout
+      using the `lsp-server` + `lsp-types` crates (sync; no tokio).
+      Implementation in [`src/lsp.rs`](../src/lsp.rs).
+- [x] Supports the LSP minimum: `initialize` / `initialized`,
+      `textDocument/didOpen` / `didChange` (full-text) / `didClose`,
+      `textDocument/publishDiagnostics`, `textDocument/hover`,
+      `shutdown` / `exit`.
+- [x] Reuses the parser + resolver from US-201 / US-203 via the new
+      `validate_text` API; project index built from open documents'
+      on-disk paths each validation pass.
+- [x] Hover provider renders the rule catalog entry for the
+      diagnostic under the cursor (rule code + short and full
+      description + the specific message) as markdown.
+- [x] Severity / position / code mapping has unit-test coverage.
+- [ ] **Operator action / Batch O follow-up:** smoke-test against a
+      VS Code reference extension end-to-end. The protocol surface is
+      implemented and unit-tested; a one-time client integration test
+      is the remaining piece. Adds an entry to Batch O's punch list.
+- [ ] **Deferred:** `textDocument/definition`; declared as
+      unsupported in the server capabilities. Adds clean opt-in once
+      the AST exposes declaration locations as ranges.
 
 #### US-207: Differential test corpus — **PARTIALLY DONE (v0.9.0); side-by-side Pilot run pending US-201**
 

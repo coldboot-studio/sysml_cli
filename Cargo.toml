@@ -1,6 +1,6 @@
 [package]
 name = "sysml-validate"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 description = "CLI preflight validator for SysML v2 and KerML textual models."
 license = "MIT"
@@ -31,6 +31,11 @@ include_dir = { version = "0.7", features = ["glob"] }
 # docs/differential-corpus-report.md.
 tree-sitter = "0.24"
 tree-sitter-sysml = "0.1"
+# US-206 (Batch M): thin LSP server using rust-analyzer's lsp-server
+# scaffold + the canonical lsp-types crate. Sync stdio JSON-RPC; no
+# tokio runtime; minimal dependency surface.
+lsp-server = "0.7"
+lsp-types = "0.97"
 
 # Reproducible-build settings (US-109). Single codegen unit and fat LTO
 # produce a single deterministic object; strip removes timestamps and

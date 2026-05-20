@@ -9,6 +9,7 @@ mod info;
 mod junit;
 mod lex;
 mod library;
+mod lsp;
 mod manifest;
 mod project;
 mod report;
@@ -117,6 +118,7 @@ fn run(raw_args: &[String]) -> Result<i32, String> {
         Some("grammar-info") => run_grammar_info(&args[1..]),
         Some("corpus-info") => run_corpus_info(&args[1..]),
         Some("library-info") => run_library_info(&args[1..]),
+        Some("lsp") => lsp::run().map(|_| 0),
         Some("-h") | Some("--help") | None => {
             print_help();
             Ok(0)
@@ -677,6 +679,7 @@ fn print_help() {
     println!("  sysml-validate grammar-info [--format text|json]");
     println!("  sysml-validate corpus-info [--format text|json]");
     println!("  sysml-validate library-info [--format text|json] [--library-path <dir>]");
+    println!("  sysml-validate lsp                          # Language Server (stdio)");
 }
 
 fn print_validate_help() {

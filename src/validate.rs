@@ -52,7 +52,43 @@ pub fn validate_native(
         }
     };
 
-    let scan = Scanner::new(path, &text).scan();
+    validate_text_into(path, &text, strict, config, library, project, result)
+}
+
+/// Validate an in-memory buffer. Used by the LSP server (US-206) where
+/// the editor's current text may not yet be on disk. Skips the
+/// SYSML010 extension check and the SYSML012 I/O error — the caller is
+/// expected to have populated `text` itself.
+pub fn validate_text(
+    path: &Path,
+    text: &str,
+    strict: bool,
+    config: &Config,
+    library: &LibraryLoader,
+    project: &ProjectIndex,
+) -> ValidationResult {
+    validate_text_into(
+        path,
+        text,
+        strict,
+        config,
+        library,
+        project,
+        ValidationResult::new(path),
+    )
+}
+
+fn validate_text_into(
+    path: &Path,
+    text: &str,
+    strict: bool,
+    config: &Config,
+    library: &LibraryLoader,
+    project: &ProjectIndex,
+    mut result: ValidationResult,
+) -> ValidationResult {
+
+    let scan = Scanner::new(path, text).scan();
     let tokens = scan.tokens;
     let mut suppressions = scan.suppressions;
     let non_blank_lines = scan.non_blank_lines;
@@ -60,7 +96,7 @@ pub fn validate_native(
     // AST parse (US-201, Batch K). Surfaces metadata-tag declarations
     // and other shapes the token recognizer misses. Falls back silently
     // if the parser is unavailable — the token-based passes still run.
-    let ast_parse = ast::parse(&text);
+    let ast_parse = ast::parse(text);
     let ast_declared_names = ast_parse
         .as_ref()
         .map(ast::collect_declared_names)

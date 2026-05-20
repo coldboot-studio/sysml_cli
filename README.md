@@ -14,7 +14,15 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.10.0 integrates the **tree-sitter SysML grammar**
+> **Status.** v0.13.0 ships a **thin LSP server** (US-206).
+> `sysml-validate lsp` speaks Language Server Protocol over stdin/stdout
+> using `lsp-server` and `lsp-types` directly (no tokio runtime).
+> Handles `initialize`, `textDocument/didOpen` / `didChange` / `didClose`,
+> `textDocument/publishDiagnostics`, and `textDocument/hover` (renders
+> the rule catalog entry under the cursor). Plug into VS Code / Neovim /
+> Helix with a one-line client config.
+>
+> v0.10.0 integrates the **tree-sitter SysML grammar**
 > (US-201 Batch K). AST-aware declared-name collection augments the
 > token-based recognizer in both `validate_reference_candidates` and
 > the project-wide symbol index, cutting false-positive findings on
