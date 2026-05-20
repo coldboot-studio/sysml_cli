@@ -52,7 +52,12 @@ STAGE_DIR="${DIST_DIR}/bundle/${BUNDLE_NAME}"
 ARCHIVE_DIR="${DIST_DIR}/bundle"
 
 rm -rf "${STAGE_DIR}"
-mkdir -p "${STAGE_DIR}/bin" "${STAGE_DIR}/sbom" "${STAGE_DIR}/attestation" "${STAGE_DIR}/docs/compliance/do-330-qualification-kit"
+mkdir -p \
+  "${STAGE_DIR}/bin" \
+  "${STAGE_DIR}/sbom" \
+  "${STAGE_DIR}/attestation" \
+  "${STAGE_DIR}/docs/compliance/do-330-qualification-kit" \
+  "${STAGE_DIR}/skills"
 
 # ---------------------------------------------------------------------
 # Stage binary + signatures
@@ -129,6 +134,19 @@ done
 if [[ -d "${DOCS_SRC}/compliance/do-330-qualification-kit" ]]; then
   cp -r "${DOCS_SRC}/compliance/do-330-qualification-kit/." \
         "${DOCS_DST}/compliance/do-330-qualification-kit/"
+fi
+
+# ---------------------------------------------------------------------
+# Stage agent skill(s) (US-311 / Batch Q)
+#
+# Per agentskills.io: a skill is a directory containing SKILL.md.
+# Copy the whole tree so the consumer can drop skills/sysml-validate/
+# into their agent's skills directory verbatim.
+# ---------------------------------------------------------------------
+
+SKILLS_SRC="${REPO_ROOT}/skills"
+if [[ -d "${SKILLS_SRC}" ]]; then
+  cp -r "${SKILLS_SRC}/." "${STAGE_DIR}/skills/"
 fi
 
 # ---------------------------------------------------------------------

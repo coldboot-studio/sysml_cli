@@ -125,6 +125,13 @@ sysml-validate-<version>-<target>/
 │   └── sysml-validate.spdx.json  # SPDX 3.0
 ├── attestation/
 │   └── provenance.intoto.jsonl   # SLSA v1.0 Build L3 in-toto attestation
+├── skills/
+│   └── sysml-validate/           # agentskills.io-spec agent skill (US-311)
+│       ├── SKILL.md              # frontmatter + action-oriented instructions
+│       └── references/
+│           ├── rule-catalog.md       # per-SYSMLxxx remediation table
+│           ├── suppression-syntax.md # directive grammar reference
+│           └── cicd-recipes.md       # per-platform CI recipes
 └── docs/
     ├── EXECUTIVE_SUMMARY.md
     ├── TECH_MANUAL.md
@@ -151,6 +158,19 @@ sysml-validate-<version>-<target>/
             ├── tvcr-template.md
             └── tas-template.md
 ```
+
+### Agent skill (skills/sysml-validate/)
+
+The bundle includes a `SKILL.md` per the
+[agentskills.io](https://agentskills.io) open specification. Agentic
+clients (Claude Code, Cursor, Gemini CLI, OpenCode, Junie,
+OpenHands, GitHub Copilot, Goose, Amp, Roo Code, and others) can
+drop the `skills/sysml-validate/` directory into their agent's
+skills path and the agent gains project-specific knowledge of the
+diagnostic taxonomy, suppression syntax, and CI integration
+patterns. This is an **integration accelerator for AI-augmented
+adopters** — analogous to shipping an LSP capability spec for
+editor-augmented adopters.
 
 `BUNDLE-MANIFEST.txt` lists every file in the bundle with its SHA-256
 hash. Verify it with the recipe in

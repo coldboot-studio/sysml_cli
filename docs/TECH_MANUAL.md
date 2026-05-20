@@ -60,6 +60,17 @@ For trust-verification recipes (signatures, SBOM, SLSA), see
 [`SECURITY.md`](SECURITY.md). For accessibility statements, see
 [`accessibility.md`](accessibility.md).
 
+**For AI-augmented users.** If you are using an agentic coding tool
+(Claude Code, Cursor, Gemini CLI, OpenCode, Junie, OpenHands, GitHub
+Copilot, Goose, Amp, Roo Code, etc.), this project ships an
+[agentskills.io](https://agentskills.io)-spec agent skill at
+[`skills/sysml-validate/SKILL.md`](../skills/sysml-validate/SKILL.md).
+Drop the `skills/sysml-validate/` directory into your agent's skills
+path and your agent gains imperative instructions for invoking the
+validator, the full `SYSMLxxx` remediation table, the exact
+suppression-directive grammar, and per-platform CI recipes — loaded
+on demand via progressive disclosure.
+
 ### 1.3 What this manual does NOT cover
 
 - The OMG SysML v2 / KerML languages themselves. See the OMG

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N) + Batch O code/CI polish + Batch P release-bundle deliverable** complete (v0.15.0). Remaining items (O-3 GPG ceremony, O-4 first-release SBOM verification, O-5 third-party VPAT signoff) are operator-action items that require the first tagged release or a third-party consultant and cannot be discharged from the repo alone. |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N) + Batch O code/CI polish + Batch P release-bundle + Batch Q agentic-skill integration** complete (v0.16.0). Remaining items (O-3 GPG ceremony, O-4 first-release SBOM verification, O-5 third-party VPAT signoff) are operator-action items that require the first tagged release or a third-party consultant and cannot be discharged from the repo alone. |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-19 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -35,6 +35,7 @@ stories in the body of this PRD.
 | M | DONE v0.13.0 | US-206 | Thin LSP server (hover + diagnostics over stdio) |
 | O | DONE v0.14.0 (code/CI items) | (consolidated) | SHA-pinned actions, diffoscope job, nightly differential cron, --fips deferred, debug-test removed; O-3 / O-4 / O-5 remain operator actions for first release. |
 | P | DONE v0.15.0 | US-308, US-309, US-310 | Release bundle: structured per-target archive with binary + signatures + SBOMs + SLSA + every doc; executive summary; full end-user technical manual. |
+| Q | DONE v0.16.0 | US-311 | Agent skill (agentskills.io): `skills/sysml-validate/SKILL.md` + references/ for AI-augmented end users. |
 
 After M and O, the user-story-level work in the PRD is closed.
 Adopting projects continue the remaining "per-project completion"
@@ -934,6 +935,46 @@ PRD, and grep over the source.
 - [x] Worked examples render the CLI invocation and the expected
       output so users can grep this document and find the recipe.
 - [x] Included verbatim in the release bundle assembled by US-308.
+
+#### US-311: Agent skill (agentskills.io) — **DONE (v0.16.0, Batch Q)**
+
+**Description.** As an end user assisted by an AI coding agent
+(Claude Code, Cursor, Gemini CLI, OpenCode, Junie, OpenHands, etc.),
+I want a `SKILL.md` per the [agentskills.io](https://agentskills.io)
+open specification so my agent loads project-specific knowledge —
+diagnostic taxonomy, suppression syntax, baseline semantics, CI
+recipes — on demand rather than guessing or hallucinating.
+
+**Rationale.** SysML v2 / KerML is niche, the `SYSMLxxx` rule
+catalog is project-specific, and the suppression directive grammar
+is not derivable from base training. Agents working in this domain
+otherwise produce confidently-wrong suggestions (wrong comment
+prefix, wrong directive keyword, line-number-based baselines, etc.).
+The agentskills.io open spec is supported by Claude Code, Cursor,
+Gemini CLI, OpenCode, Junie, OpenHands, GitHub Copilot, VS Code,
+Goose, Amp, Roo Code, and ~30 other agentic clients — one file,
+broad reach.
+
+**Acceptance Criteria:**
+- [x] [`skills/sysml-validate/SKILL.md`](../skills/sysml-validate/SKILL.md)
+      follows the agentskills.io specification: directory name
+      matches `name` field; required `name` and `description`
+      frontmatter; optional `license`, `compatibility`, `metadata`;
+      body is action-oriented (imperative instructions, not
+      descriptive prose); under 500 lines per spec guidance.
+- [x] `description` field includes specific keywords agents look for
+      ("SysML v2," "KerML," "SYSMLxxx," "sysml-validate.toml,"
+      "baseline," etc.) so progressive disclosure activates the skill
+      at the right moments.
+- [x] [`skills/sysml-validate/references/rule-catalog.md`](../skills/sysml-validate/references/rule-catalog.md),
+      [`suppression-syntax.md`](../skills/sysml-validate/references/suppression-syntax.md),
+      and [`cicd-recipes.md`](../skills/sysml-validate/references/cicd-recipes.md)
+      hold the longer-form content the main SKILL.md points at.
+      Per-spec, agents load these on demand.
+- [x] Cross-referenced from [`docs/TECH_MANUAL.md`](TECH_MANUAL.md)
+      §1.2 and [`docs/compliance/INDEX.md`](compliance/INDEX.md).
+- [x] Included verbatim in the release bundle assembled by US-308
+      under `skills/`.
 
 ### Phase 4 — Differentiation (open-ended)
 

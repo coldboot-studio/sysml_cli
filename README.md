@@ -14,7 +14,18 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.15.0 ships **Batch P — government release bundle**.
+> **Status.** v0.16.0 adds an [agentskills.io](https://agentskills.io)-
+> spec agent skill at
+> [`skills/sysml-validate/`](skills/sysml-validate/) for AI-augmented
+> end users. The skill is loaded by Claude Code / Cursor / Gemini
+> CLI / OpenCode / Junie / OpenHands / GitHub Copilot / Goose / Amp /
+> Roo Code / ~30 other agentic clients and teaches them how to
+> invoke the validator, interpret every `SYSMLxxx` code, write
+> suppression directives with exact syntax (no hallucinations), and
+> integrate the validator into per-platform CI pipelines. Bundled
+> verbatim with every release archive under `skills/`.
+>
+> v0.15.0 shipped **Batch P — government release bundle**.
 > Every tagged release now produces, per target triple, a single
 > `sysml-validate-<version>-<target>.{tar.gz,zip}` archive containing
 > the signed binary, its SHA-256 / cosign / GPG signatures, both
