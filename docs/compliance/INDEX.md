@@ -10,8 +10,8 @@ bundle (`sysml-validate-<version>-<target>/docs/`).
 | Field | Value |
 |---|---|
 | Product | `sysml-validate` |
-| Version | 0.15.0 |
-| Bundle date | 2026-05-19 |
+| Version | 0.16.0 |
+| Bundle date | 2026-05-20 |
 | Bundle hash | See `BUNDLE-MANIFEST.txt` in the release archive |
 
 ---

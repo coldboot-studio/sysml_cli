@@ -4,6 +4,22 @@
 [`LICENSE`](LICENSE)). It embeds and depends on the following third-
 party software at distribution time.
 
+## Trademarks
+
+SysML® is a registered trademark and KerML™ is a trademark of Object
+Management Group, Inc. (OMG) in the United States and other countries.
+`sysml-validate` is an independent third-party tool. It is not produced,
+endorsed, certified, or affiliated with OMG; the only "OMG" content in
+the deliverable is the EPL-2.0-licensed SysML v2 standard library
+redistributed verbatim per the notice below.
+
+Other marks referenced in the documentation belong to their respective
+owners: SARIF and SPDX (the Linux Foundation / SPDX project), CycloneDX
+(OWASP), Sigstore / cosign / Rekor / SLSA (Open Source Security
+Foundation), JUnit (the JUnit project), GitHub / GitHub Actions
+(GitHub, Inc.), GitLab (GitLab, Inc.), Iron Bank and Platform One
+(United States Air Force), and any product-name uses are nominative.
+
 ## Vendored: OMG SysML v2 Standard Library
 
 - **Path in this repo**: `vendor/sysml-v2-release/sysml.library/`

@@ -5,8 +5,8 @@
 | Field | Value |
 |---|---|
 | Product | `sysml-validate` |
-| Version | 0.15.0 |
-| Last updated | 2026-05-19 |
+| Version | 0.16.0 |
+| Last updated | 2026-05-20 |
 | Read time | ~3 minutes |
 
 ---
@@ -15,15 +15,63 @@
 
 `sysml-validate` is a small, fast, self-contained command-line validator
 for **SysML v2 and KerML** — the OMG formal modeling standards
-(`formal/26-03-02` and `formal/26-03-01`, September 2025) that DoD
-Digital Engineering programs, NASA mission directorates, and federal
-civilian acquisitions are increasingly required to use under
-[DoDI 5000.97 Digital Engineering](https://www.esd.whs.mil/Portals/54/Documents/DD/issuances/dodi/500097p.PDF)
-and OMB [M-26-05](https://www.whitehouse.gov/wp-content/uploads/2026/01/M-26-05-Adopting-a-Risk-based-Approach-to-Software-and-Hardware-Security.pdf).
+(`formal/26-03-02` and `formal/26-03-01`, finalized September 2025;
+editorially revised March 2026 for ISO Fast-Track) that DoD Digital
+Engineering programs, NASA mission directorates, and federal civilian
+acquisitions are increasingly adopting under
+[DoDI 5000.97 Digital Engineering](https://www.esd.whs.mil/Portals/54/Documents/DD/issuances/dodi/500097p.PDF).
+DoDI 5000.97 mandates digital-engineering practice and the use of
+digital models as authoritative artifacts; it does not name a single
+modeling language, but SysML v2 is the modern OMG-standard answer
+that programs are converging on. The tool's supply-chain and release
+artifacts are independently aligned with OMB
+[M-26-05](https://www.whitehouse.gov/wp-content/uploads/2026/01/M-26-05-Adopting-a-Risk-based-Approach-to-Software-and-Hardware-Security.pdf)'s
+risk-based assurance posture (SBOMs, SLSA provenance, signatures) so
+agencies opting in under that memorandum's tailored approach have the
+evidence they need.
 
-The product is **one statically-linked binary** (~10 MB) plus the
-documents bundled alongside it. No installer, no runtime dependencies,
-no network access, no telemetry, no auto-update.
+The product is **one single-file executable** (~10 MB) plus the
+documents bundled alongside it. No installer, no application runtime
+or service dependency, no network access, no telemetry, no
+auto-update. On Linux the binary dynamically links the platform's
+glibc (the standard `x86_64-unknown-linux-gnu` / `aarch64-unknown-linux-gnu`
+targets); macOS and Windows binaries are correspondingly linked
+against the platform's standard libraries. A fully static `musl`
+build is on the roadmap for tightly-constrained enclaves.
+
+## What's different
+
+`sysml-validate` does not compete with full modeling tools — Cameo /
+CATIA Magic 2026.x, Eclipse SysON, the OMG Pilot Implementation,
+Sensmetry's SysIDE, or OpenMBEE / Flexo all serve adjacent niches
+(authoring, visualization, formal V&V, API workflows). It occupies a
+narrower, currently-unoccupied position:
+
+- **Native single-file CI gate.** No JVM, no Docker, no Maven, no
+  Eclipse. Cold start in tens of milliseconds. The closest CI-focused
+  open-source alternative (Westfall-io `windtrader`) is a Python
+  wrapper around the Java Pilot Implementation; it has no SARIF or
+  JUnit output and inherits the JVM start-up cost.
+- **Structured findings out of the box.** SARIF 2.1.0, JUnit XML,
+  GCC-style plain text, JSON, and human text — every format the
+  consumer's existing pipeline already speaks. No competing SysML v2
+  tool publishes SARIF.
+- **Baseline / diff mode for adoption-without-rewrite.** Existing
+  large models can be onboarded without first fixing every legacy
+  finding.
+- **Audited suppression directives.** Inline disables surface in SARIF
+  as `suppressions[].kind = "inSource"` audit records rather than
+  silently dropping diagnostics.
+- **Government release bundle.** Per-target archive ships the signed
+  binary alongside CycloneDX 1.6 + SPDX 3.0 SBOMs, SLSA v1.0 in-toto
+  provenance, cosign + GPG signatures, the reproducible-build recipe,
+  and the full compliance pack (NIST SSDF, 800-53 Rev 5, CMMC L2,
+  DO-330 TQL-5 templates, NPR 7150.2D template, Section 508 VPAT
+  draft) — verified end-to-end via a `BUNDLE-MANIFEST.txt` with a
+  SHA-256 of every file.
+- **Hardened delegation, not pretend-replacement.** Deep semantic
+  checks are routed to the OMG Pilot via a shell-injection-safe
+  `--backend official` channel, with a `--timeout` kill switch.
 
 ## What problem it solves
 
@@ -62,8 +110,11 @@ project office is required. The full verification recipe is in
 - **Air-gap-capable.** The embedded OMG SysML v2 standard library
   (release tag `2026-04`) is compiled into the binary; no submodule
   download is needed at runtime. See [`OFFLINE.md`](OFFLINE.md).
-- **IL2 / IL4 / IL5 compatible.** No network calls, no telemetry, no
-  auto-update; the binary is acceptable inside SIPR / NIPR enclaves.
+- **Designed for IL2 / IL4 / IL5 enclave deployment** (no network
+  calls, no telemetry, no auto-update). Actual deployability into
+  any specific enclave or onto SIPR / NIPR is an Authorizing
+  Official decision subject to local ATO and security review; the
+  tool removes the technical obstacles, not the authority decision.
   See [`compliance/cmmc-l2-deployment.md`](compliance/cmmc-l2-deployment.md).
 - **Reproducible by independent rebuild.** A defense prime can rebuild
   the binary from the published source revision and toolchain and
@@ -93,11 +144,24 @@ contains every document a procurement review would request:
 
 ## What it is not
 
-`sysml-validate` is a **preflight CI gate**, not a replacement for the
-OMG Pilot Implementation. Deep semantic checks (constraint evaluation,
-expression evaluation, full conformance) are delegated to the Pilot
-via the hardened `--backend official` channel when the consumer needs
-them. The roadmap and trade-offs are explicit in
+`sysml-validate` is a **preflight CI gate**, not a full SysML v2
+conformance validator and not a replacement for the OMG Pilot
+Implementation. Deep semantic checks (constraint evaluation,
+expression evaluation, full OCL well-formedness) are delegated to the
+Pilot via the hardened `--backend official` channel when the consumer
+needs them.
+
+**Known limitation on legacy corpora.** The native backend's
+token-based recognizer currently produces a high false-positive rate
+on the OMG-curated `examples` corpus (~95% as of v0.16.0, attributable
+to documented token-level limitations awaiting full tree-sitter parser
+migration in US-201). On a well-structured new project (verified
+against the `scamp` reference: 13 files, 6,015 LOC, 295 declarations)
+it passes clean. For adoption against an existing large model, use
+the `--baseline` workflow or `--backend official` until the parser
+migration is complete. The honest snapshot is in
+[`differential-corpus-report.md`](differential-corpus-report.md); the
+roadmap and trade-offs are in
 [`PRD-government-readiness.md`](PRD-government-readiness.md) §4 and
 §6.
 
@@ -124,3 +188,12 @@ This is an open-source project under the MIT license, with vulnerability
 disclosure handled per [`SECURITY.md`](SECURITY.md). For acquisition or
 sustainment conversations, contact the maintainer listed in the
 project's GitHub repository.
+
+---
+
+*SysML® is a registered trademark and KerML™ is a trademark of Object
+Management Group, Inc. `sysml-validate` is an independent third-party
+tool and is not produced, endorsed, certified, or affiliated with OMG.
+See [`NOTICE.md`](../NOTICE.md) for the full attribution of third-party
+trademarks and the EPL-2.0-licensed SysML v2 standard library
+redistributed with this binary.*
