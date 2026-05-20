@@ -20,7 +20,7 @@ wait-timeout = "0.2"
 # US-105: sysml-validate.toml config + US-101: SARIF emitter.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = { version = "0.8", default-features = false, features = ["parse"] }
+toml = { version = "1.1", default-features = false, features = ["parse"] }
 # US-202 (Phase 2): embed the OMG SysML v2 standard library at compile
 # time so the validator is self-contained and air-gap-capable. The
 # library source lives at vendor/sysml-v2-release/sysml.library/ as a
