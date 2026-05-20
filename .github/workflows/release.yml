@@ -135,17 +135,15 @@ jobs:
           echo "name=$(basename "$dest")" >> "$GITHUB_OUTPUT"
 
       - name: Generate CycloneDX 1.6 SBOM
-        uses: taiki-e/install-action@86ec8296ca78c5cfba526854b020d4e58cf41e67 # v2.44.51
+        # Uses Syft (via anchore/sbom-action) for CycloneDX too — the
+        # same tool produces both SBOM formats. cargo-cyclonedx was
+        # tried first but its released versions max out at spec 1.5;
+        # Syft natively emits CycloneDX 1.6.
+        uses: anchore/sbom-action@55dc4ee22412511ee8c3142cbea40418e6cec693 # v0.17.8
         with:
-          tool: cargo-cyclonedx
-
-      - name: Run cargo-cyclonedx
-        shell: bash
-        run: |
-          cargo cyclonedx --format json --spec-version 1.6 \
-            --override-filename sysml-validate.cdx
-          # cargo-cyclonedx writes alongside Cargo.toml; move to dist.
-          mv sysml-validate.cdx.json dist/sysml-validate-${{ matrix.target }}.cdx.json
+          path: .
+          format: cyclonedx-json
+          output-file: dist/sysml-validate-${{ matrix.target }}.cdx.json
 
       - name: Generate SPDX 3.0 SBOM
         uses: anchore/sbom-action@55dc4ee22412511ee8c3142cbea40418e6cec693 # v0.17.8
