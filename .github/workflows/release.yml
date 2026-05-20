@@ -64,9 +64,15 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             ext: ".exe"
-          - target: x86_64-apple-darwin
-            os: macos-13
-            ext: ""
+          # x86_64-apple-darwin (Intel Mac) was dropped after v0.16.1-rc3:
+          # the only GitHub-hosted runner image for that target is
+          # macos-13, which on the free tier sits in the queue for
+          # hours and blocks the rest of the run. Apple Silicon has
+          # been the Mac default since 2020 and most adopters have
+          # migrated; the Rust ecosystem (incl. several large CLIs) has
+          # been winding down published Intel Mac binaries on similar
+          # grounds. Adopters who need x86_64 Mac can build from source
+          # via `cargo install` against a tagged release.
           - target: aarch64-apple-darwin
             os: macos-latest
             ext: ""

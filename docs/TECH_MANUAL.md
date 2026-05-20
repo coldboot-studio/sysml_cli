@@ -150,9 +150,12 @@ Full statements: [SEC], [OFF], [TM], [REP].
 
 ### 3.1 Prerequisites
 
-- A 64-bit OS. Supported targets: `x86_64-unknown-linux-gnu`,
-  `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc`,
-  `x86_64-apple-darwin`, `aarch64-apple-darwin`.
+- A 64-bit OS. Pre-built binary targets:
+  `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`,
+  `x86_64-pc-windows-msvc`, `aarch64-apple-darwin` (Apple Silicon).
+  Intel Mac (`x86_64-apple-darwin`) is not shipped as a pre-built
+  binary; build from source with `cargo install --git ...` against a
+  tagged release if you need it.
 - For source builds: Rust 1.85.0 or later (pinned in
   [`rust-toolchain.toml`](../rust-toolchain.toml)), Git with submodule
   support.
