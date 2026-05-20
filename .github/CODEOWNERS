@@ -1,0 +1,28 @@
+# Code owners for review routing. GitHub uses this file to suggest
+# reviewers automatically and (when paired with branch protection's
+# "Require review from Code Owners" rule) to require approval on
+# changes to listed paths.
+#
+# Format: <path-glob> <owner1> [<owner2> ...]
+# Owners can be users (@handle) or teams (@org/team).
+
+# Fallback owner for everything else.
+*                                @mshill
+
+# Release pipeline and signing-key handling. Any change to how the
+# binary is built or signed should be reviewed deliberately.
+/.github/workflows/release.yml   @mshill
+/scripts/assemble-release-bundle.sh  @mshill
+
+# Security policy and verification recipes. Keep in sync with any
+# fingerprint, keyserver, or disclosure-policy change.
+/.github/SECURITY.md             @mshill
+/docs/SECURITY.md                @mshill
+/docs/THREAT_MODEL.md            @mshill
+
+# Compliance pack. Updates should be reviewed against the standard
+# they map to (NIST 800-53, SSDF, CMMC, DO-330, NPR 7150.2D).
+/docs/compliance/                @mshill
+
+# Build reproducibility and provenance documentation.
+/docs/REPRODUCING.md             @mshill
