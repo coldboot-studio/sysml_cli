@@ -2,11 +2,44 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-L + Phase 3 compliance docs (Batch N)** complete (v0.12.0). Phase 2 continues with Batch M (LSP server); Phase 3 templates filled in per-adopting-project. |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-L + Phase 3 compliance docs (Batch N)** complete (v0.12.0). Two batches outstanding: **M** (LSP server, US-206) and **O** (final polish — operator-action items consolidated). |
 | Owner | sysml-cli maintainers |
-| Last updated | 2026-05-18 |
+| Last updated | 2026-05-19 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
 | Related | [README.md](../README.md), [Cargo.toml](../Cargo.toml) |
+
+---
+
+## Batch index
+
+For pickup-cold orientation. Each batch maps to one or more user
+stories in the body of this PRD.
+
+| Batch | Status | Story | Headline outcome |
+|---|---|---|---|
+| 0 | DONE v0.2.0 | (consolidation) | Rust-only; main.rs decomposed; shell-injection fix |
+| A | DONE v0.2.1 | US-103, US-107, US-108 | `--fail-on-warning`, fingerprints, timeout-kill |
+| B | DONE v0.3.0 | US-101, US-104, US-105 | SARIF, suppressions, `sysml-validate.toml` |
+| C | DONE v0.4.0 | US-102, US-106 | JUnit, baseline/diff mode |
+| D | DONE v0.4.0 | US-109, US-110, US-111, US-112, US-113 | Reproducible build, SBOM, signing, SLSA L3, SECURITY/OFFLINE/THREAT_MODEL |
+| E | DONE v0.4.0 | US-114 | `--format plain`, VPAT 2.5 draft |
+| F | DONE v0.5.0 | US-202 | Embedded SysML v2 standard library |
+| G | DONE v0.6.0 | US-203 | Cross-file name resolution + project index |
+| G.5 | DONE v0.6.1 | (real-world fix) | `:` typed-usage colon added to reference markers |
+| H | DONE v0.7.0 | US-205 (scoped) | SYSML210/211/212/213/220 structural rules |
+| I | DONE v0.8.0 | US-204 | Sysand `.project.json` manifest |
+| J | DONE v0.9.0 | US-207 | Differential corpus harness + report |
+| K | DONE v0.10.0 | US-201 (initial) | tree-sitter integration; AST name collection |
+| L | DONE v0.11.0 | US-201 cont. | AST-aware inherited-zone SYSML213 suppression |
+| N | DONE v0.12.0 | US-301-305 | NIST SSDF / 800-53 / CMMC / DO-330 / NPR 7150.2D |
+| **M** | **TODO** | **US-206** | **Thin LSP server (hover, definition, diagnostics)** |
+| **O** | **TODO** | (consolidated) | **Final polish — see §10 below** |
+
+After M and O, the user-story-level work in the PRD is closed.
+Adopting projects continue the remaining "per-project completion"
+items inside US-304 (DO-330 kit), US-305 (NASA validation report),
+US-306 (VPAT), and US-307 (FIPS build) — those are intentionally
+template-only here.
 
 ---
 
@@ -988,6 +1021,152 @@ want a counterexample so I can fix them.
 - **Q7. What's the policy on dependency version pinning vs. version
   ranges?** Default position: pinned exact versions in `Cargo.lock`,
   caret ranges in `Cargo.toml`. SBOM emits the pinned versions.
+
+## 10. Batch O — Final polish (consolidated)
+
+These items were noted as deferred at the time each prior batch
+shipped. They are collected here so the final batch is one
+self-contained unit rather than a treasure hunt through the rest of
+the document.
+
+### O-1. Pin every GitHub Actions `uses:` to a commit SHA
+
+**Origin.** US-111 acceptance criteria: "Operator action before SLSA
+L3 audit: pin every `uses:` line in [`release.yml`](../.github/workflows/release.yml)
+to a commit SHA. Tag pins (e.g. `@v4`) are acceptable during bring-up
+but a strict SLSA L3 audit will flag them."
+
+**Concretely.** Each `uses: <org>/<repo>@<tag>` in
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) and
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) becomes
+`uses: <org>/<repo>@<40-char-sha> # <tag>`. Look up the current SHA
+for each action at the published tag, write it into the workflow, and
+keep the comment so future Dependabot bumps remain readable.
+
+**Done when.** Both workflow files contain only SHA pins; a comment
+on each names the human-readable tag.
+
+### O-2. Add a `diffoscope` reproducibility CI job
+
+**Origin.** US-109 acceptance criteria: "Deferred to first real
+release: a CI job that runs `diffoscope` between two independent
+fresh builds of the same tag and fails the release on diff."
+
+**Concretely.** Extend
+[`.github/workflows/release.yml`](../.github/workflows/release.yml)
+with a second build job (`build-verify`) that runs in parallel with
+the matrix build for the same target, then a final `reproducibility-
+check` job that downloads both artifacts and runs `diffoscope --exit-
+code`. Fail the release on any diff.
+
+**Done when.** A pushed `v0.x.y` tag exercises the new job and the
+job reports zero diff; the recipe and the actual job link are added
+to [`docs/REPRODUCING.md`](REPRODUCING.md).
+
+### O-3. Provision the GPG signing key and publish its fingerprint
+
+**Origin.** US-111 acceptance criteria: "Operator action required
+before first release: generate a long-lived GPG signing key offline;
+add `GPG_SIGNING_KEY` and `GPG_SIGNING_PASSPHRASE` to repository
+secrets; publish the public key to `keys.openpgp.org` and to the
+project landing page; replace `<FINGERPRINT_TO_BE_PUBLISHED_AT_FIRST_RELEASE>`
+in [`docs/SECURITY.md`](SECURITY.md) with the real fingerprint."
+
+**Concretely.** Generate the key on an air-gapped machine; add the
+two repo secrets via GitHub Settings; upload public key; edit
+[`docs/SECURITY.md`](SECURITY.md) to replace the placeholder.
+
+**Done when.** A test release produces a verifiable `.asc` file
+that `gpg --verify` accepts against the published fingerprint.
+
+### O-4. Confirm SBOM contents on the first release
+
+**Origin.** US-110 acceptance criteria: "Needs first real release to
+validate: confirm the generated SBOMs include the NTIA Minimum
+Elements plus CISA 2025 additions (component hash, license, tool
+name, generation context, software producer)."
+
+**Concretely.** After the first tagged release, download
+`*-cdx.json` and `*.spdx.json` from the release assets. Verify the
+following are present for the root component AND for each transitive
+dependency: `name`, `version`, `licenses[]`, `hashes[]` (SHA-256),
+`supplier`, `purl`. Document any gaps and adjust the workflow.
+
+**Done when.** A short verification log is committed to
+[`docs/REPRODUCING.md`](REPRODUCING.md) confirming the NTIA + CISA
+2025 fields are populated.
+
+### O-5. Have the draft VPAT reviewed by an accessibility consultant
+
+**Origin.** US-114 acceptance criteria: "Operator action before RFP
+submission: review the draft VPAT with an accessibility consultant,
+sign and date, publish as a versioned artifact alongside releases."
+
+**Concretely.** Engage a third-party Section 508 / WCAG consultant
+(the GSA Section 508 program maintains a list); have them review
+[`docs/accessibility.md`](accessibility.md); incorporate feedback;
+sign and date; publish as `docs/accessibility/vpat-2.5-signed-YYYY-MM-DD.pdf`
+or equivalent.
+
+**Done when.** A signed VPAT 2.5 is attached to the first GitHub
+Release of an RFP-bearing version.
+
+### O-6. Decide and document --fips story
+
+**Origin.** US-307 acceptance criteria: "Today `--fips` is a no-op
+because the tool performs no cryptographic operations; the build is
+documented and reserved for Phase 4."
+
+**Concretely.** Either (a) drop US-307 from scope until the tool
+actually performs cryptographic operations at runtime, OR (b)
+implement the no-op `--features fips` build that links a FIPS-
+validated crypto module so the feature is wired and tested even if
+not yet exercised. Recommendation: option (a) — defer until needed.
+
+**Done when.** The PRD has a single clear statement of which option
+was chosen.
+
+### O-7. Wire the differential corpus into a CI cron
+
+**Origin.** US-207 acceptance criteria: "Pending CI integration: the
+test runs locally; the GitHub Actions workflow doesn't invoke it
+yet. Adding a `nightly: cargo test --test differential -- --ignored`
+job is a one-line addition to
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) once the
+baseline is stable."
+
+**Concretely.** Add a `schedule: cron: '0 6 * * *'` (or similar)
+job to `ci.yml` that runs `git submodule update --init --recursive`,
+`cargo build --release`, and `cargo test --test differential --
+--ignored`. Fail loud on baseline drift so the maintainer notices
+when a tree-sitter-sysml bump or a code change moves the histogram.
+
+**Done when.** The cron job has fired at least once and the project
+has a documented response procedure for drift.
+
+### O-8. Cleanup tasks
+
+- Remove the `inspect_typed_part_sexp` debug test in
+  [`src/ast.rs`](../src/ast.rs) — it was for grammar exploration; no
+  longer load-bearing.
+- Audit the remaining 6 `SYSML033` findings on the OMG examples
+  corpus; either fix them as real grammar gaps, or document them in
+  the differential report as known unsupported shapes.
+- Confirm the `inspect_typed_part_sexp` removal doesn't break any
+  test fixture and update the test count in this PRD.
+
+**Done when.** `cargo test` count matches the documented number;
+SYSML033 findings on the corpus are either fixed or documented.
+
+### Acceptance criteria for Batch O closure
+
+Batch O is closed when items O-1 through O-7 are either DONE or
+explicitly converted to "documented-as-decided-deferred" with
+rationale in this PRD. O-8 is a free-form cleanup batch — do as
+much as makes sense; remaining items can roll into a future minor
+release.
+
+---
 
 ## 9. Appendix: Citations
 
