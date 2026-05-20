@@ -220,6 +220,64 @@ jobs:
         with:
           subject-path: dist/${{ steps.stage.outputs.name }}
 
+      - name: Stage SLSA provenance into dist/
+        # actions/attest-build-provenance writes the attestation as an
+        # OCI referrer + workflow artifact. The bundle assembler also
+        # wants it as a local file alongside the binary. If the
+        # `attestation` step published a workflow artifact named
+        # `provenance.intoto.jsonl`, copy it into dist/; otherwise the
+        # assembler simply skips the attestation/ directory.
+        shell: bash
+        run: |
+          if [[ -f attestations/${{ steps.stage.outputs.name }}.intoto.jsonl ]]; then
+            cp "attestations/${{ steps.stage.outputs.name }}.intoto.jsonl" dist/provenance.intoto.jsonl
+          fi
+
+      - name: Install bundle dependencies (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if command -v zip >/dev/null 2>&1; then exit 0; fi
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            sudo apt-get update && sudo apt-get install -y zip
+          fi
+
+      - name: Install bundle dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        # The Git-for-Windows bash that runs `shell: bash` steps ships
+        # zip + sha256sum + tar. Nothing to install.
+        run: zip --version >/dev/null && tar --version >/dev/null
+
+      - name: Assemble government release bundle (US-308)
+        # Per-target bundle: binary + signatures + SBOMs + SLSA +
+        # every doc (executive summary, tech manual, PRD, security,
+        # offline, threat model, reproducing, accessibility, full
+        # compliance pack). Output is one archive per target, named
+        # sysml-validate-<version>-<target>.{tar.gz,zip}.
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ env.SOURCE_DATE_EPOCH }}
+        run: |
+          version="${{ github.ref_name || inputs.tag }}"
+          version="${version#v}"  # strip leading v from tag if present
+          bash scripts/assemble-release-bundle.sh \
+            "${version}" "${{ matrix.target }}" dist
+
+      - name: Compute bundle archive name
+        id: bundle
+        shell: bash
+        run: |
+          version="${{ github.ref_name || inputs.tag }}"
+          version="${version#v}"
+          case "${{ matrix.target }}" in
+            *windows*) ext="zip"  ;;
+            *)         ext="tar.gz" ;;
+          esac
+          name="sysml-validate-${version}-${{ matrix.target }}.${ext}"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+          echo "path=dist/bundle/${name}" >> "$GITHUB_OUTPUT"
+
       - name: Upload to release
         uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
         with:
@@ -231,6 +289,8 @@ jobs:
             dist/sysml-validate-${{ matrix.target }}.cdx.json
             dist/sysml-validate-${{ matrix.target }}.spdx.json
             dist/sysml-validate-${{ matrix.target }}${{ matrix.ext }}.asc
+            ${{ steps.bundle.outputs.path }}
+            ${{ steps.bundle.outputs.path }}.sha256
           fail_on_unmatched_files: false  # GPG signature may be absent
 
   # ----------------------------------------------------------------------

@@ -14,18 +14,32 @@ textual issues without pretending to replace the full reference implementation.
 For full conformance checking, use `--backend official` with a local command
 that invokes the SysML v2 pilot/release tooling.
 
-> **Status.** v0.14.0 closes the in-repo half of **Batch O — final
-> polish**. Every GitHub Actions `uses:` is SHA-pinned with a
-> tag-comment trailer (a strict SLSA L3 audit will no longer flag
-> mutable refs). The release workflow gains a `reproducibility-
-> check` job that rebuilds Linux x86_64 on a clean runner and
-> `diffoscope`s it against the matrix-built artifact, failing the
-> release on any diff. CI gains a nightly `differential` cron that
-> runs the OMG-corpus harness and fails loud on histogram drift.
-> US-307 (`--fips`) is formally deferred until the tool acquires a
-> runtime cryptographic operation — see
-> [`docs/PRD-government-readiness.md`](docs/PRD-government-readiness.md)
-> §10 / US-307 for the decision record. Three operator-action items
+> **Status.** v0.15.0 ships **Batch P — government release bundle**.
+> Every tagged release now produces, per target triple, a single
+> `sysml-validate-<version>-<target>.{tar.gz,zip}` archive containing
+> the signed binary, its SHA-256 / cosign / GPG signatures, both
+> SBOMs (CycloneDX 1.6 + SPDX 3.0), the SLSA v1.0 Build L3
+> provenance, and every doc a government program office reads:
+> [`EXECUTIVE_SUMMARY.md`](docs/EXECUTIVE_SUMMARY.md) (Flag / SES
+> one-pager), [`TECH_MANUAL.md`](docs/TECH_MANUAL.md) (15-section
+> end-user manual), [`PRD-government-readiness.md`](docs/PRD-government-readiness.md),
+> the security / offline / threat-model / reproducing trio, the
+> Section 508 / VPAT draft, and the full compliance pack (SSDF,
+> 800-53, CMMC L2, DO-330 TQL-5 templates, NPR 7150.2D template).
+> The bundle layout is documented in
+> [`docs/compliance/INDEX.md`](docs/compliance/INDEX.md), which maps
+> reviewer role (SCRM / ATO / airworthiness / NASA / CMMC L2 /
+> Section 508) to the specific document that answers their
+> questions. A `BUNDLE-MANIFEST.txt` at the bundle root lists every
+> file with its SHA-256 so the whole tree can be verified with one
+> `sha256sum -c` command.
+>
+> v0.14.0 closed the in-repo half of Batch O — final polish: every
+> GitHub Actions `uses:` SHA-pinned with a tag-comment trailer, a
+> `reproducibility-check` job that rebuilds Linux x86_64 on a clean
+> runner and `diffoscope`s it against the matrix-built artifact, a
+> nightly `differential` cron that runs the OMG-corpus harness, and
+> US-307 (`--fips`) formally deferred. Three operator-action items
 > remain (GPG key provisioning, first-release SBOM verification,
 > third-party VPAT review) — those cannot be discharged from the
 > repo alone and are tracked in PRD §10.

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N) + Batch O code/CI polish** complete (v0.14.0). Remaining Batch O items (O-3, O-4, O-5) are operator-action items that require the first tagged release or a third-party consultant and cannot be discharged from the repo alone. |
+| Status | Draft. **Phase 0 + Phase 1 (A/B/C/D/E) + Phase 2 Batches F-M + Phase 3 compliance docs (Batch N) + Batch O code/CI polish + Batch P release-bundle deliverable** complete (v0.15.0). Remaining items (O-3 GPG ceremony, O-4 first-release SBOM verification, O-5 third-party VPAT signoff) are operator-action items that require the first tagged release or a third-party consultant and cannot be discharged from the repo alone. |
 | Owner | sysml-cli maintainers |
 | Last updated | 2026-05-19 |
 | Target audience | Maintainers; defense-prime evaluators; federal program offices |
@@ -34,6 +34,7 @@ stories in the body of this PRD.
 | N | DONE v0.12.0 | US-301-305 | NIST SSDF / 800-53 / CMMC / DO-330 / NPR 7150.2D |
 | M | DONE v0.13.0 | US-206 | Thin LSP server (hover + diagnostics over stdio) |
 | O | DONE v0.14.0 (code/CI items) | (consolidated) | SHA-pinned actions, diffoscope job, nightly differential cron, --fips deferred, debug-test removed; O-3 / O-4 / O-5 remain operator actions for first release. |
+| P | DONE v0.15.0 | US-308, US-309, US-310 | Release bundle: structured per-target archive with binary + signatures + SBOMs + SLSA + every doc; executive summary; full end-user technical manual. |
 
 After M and O, the user-story-level work in the PRD is closed.
 Adopting projects continue the remaining "per-project completion"
@@ -818,7 +819,12 @@ validation report aligned with NPR 7150.2D §4.4.8 / §4.5.6.
 completed VPAT so I can include `sysml-validate` in an ICT procurement.
 
 **Acceptance Criteria:**
-- [ ] `docs/compliance/vpat-2.5-rev508.md` is published.
+- [ ] `docs/compliance/vpat-2.5-rev508.md` is published. Today the
+      draft lives inline at [`docs/accessibility.md`](accessibility.md)
+      as part of US-114. Splitting it into the dedicated compliance/
+      file is gated on US-114's "operator action before RFP submission"
+      step (consultant review + signature) — the draft has nothing
+      else to add until that signoff happens.
 
 #### US-307: `--fips` build flag — **DEFERRED (Batch O-6 decision, 2026-05-19)**
 
@@ -847,6 +853,87 @@ or (iii) a procurement explicitly requires the build flag exist.
       or runtime hashing.
 - [ ] An accompanying note in [SECURITY.md](SECURITY.md) lists the
       module's NIST CMVP certificate number.
+
+#### US-308: Government conformance bundle — **DONE (v0.15.0, Batch P)**
+
+**Description.** As a government program office evaluating
+`sysml-validate` for ATO admission, I want a single release-folder
+deliverable containing the signed binary, its trust artifacts, and
+every conformance / compliance document this repository produces, so
+my SCRM + ATO review reads one curated set rather than browsing the
+docs tree.
+
+**Acceptance Criteria:**
+- [x] [`docs/compliance/INDEX.md`](compliance/INDEX.md) is the
+      authoritative index. It maps reviewer roles (SCRM, ATO,
+      airworthiness, NASA Class A/B/C, CMMC L2, Section 508) to the
+      specific documents and files in this repo that answer their
+      questions, with one paragraph per role saying what they'll find
+      where.
+- [x] A release-bundle assembler at
+      [`scripts/assemble-release-bundle.sh`](../scripts/assemble-release-bundle.sh)
+      gathers the binary, signatures, SBOMs, SLSA provenance, and
+      every doc into a structured `sysml-validate-<version>-<target>/`
+      tree with deterministic file ordering and writes a manifest
+      (`BUNDLE-MANIFEST.txt`) of paths + SHA-256s.
+- [x] [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+      invokes the assembler per target and uploads the resulting
+      archive (`.tar.gz` on Unix-like targets, `.zip` on Windows) as
+      a release asset alongside the loose files.
+- [x] The bundle includes EXECUTIVE_SUMMARY (US-309) and TECH_MANUAL
+      (US-310) so a program office gets *the case* and *the manual*
+      in the same archive as the artifact they're being asked to
+      accept.
+
+#### US-309: Executive summary (Flag / SES audience) — **DONE (v0.15.0, Batch P)**
+
+**Description.** As a Flag-officer / SES-level decision-maker, I want
+a one-page capability statement that explains what `sysml-validate`
+is, what mission problem it addresses, what trust artifacts ship with
+it, and how it deploys — so I can decide whether my organization
+should adopt it without reading a 200-page PRD.
+
+**Acceptance Criteria:**
+- [x] [`docs/EXECUTIVE_SUMMARY.md`](EXECUTIVE_SUMMARY.md) is a single
+      page (under 1,000 words) with: capability statement, mission
+      context, trust posture summary, deployment model, evidence
+      portfolio, and next steps for adoption.
+- [x] Written for an audience that does not read SARIF, does not
+      write Rust, and will not read source code. Every claim links
+      to the artifact that substantiates it (SECURITY.md,
+      compliance/INDEX.md, SBOM, SLSA provenance).
+- [x] Included verbatim in the release bundle assembled by US-308.
+
+#### US-310: End-user technical manual — **DONE (v0.15.0, Batch P)**
+
+**Description.** As an end user — model author, CI engineer, release
+manager, or government operator — I want a single technical manual
+that documents every CLI surface, configuration knob, output format,
+rule, suppression mechanism, and integration pattern, so I do not
+have to assemble that knowledge from the README, --help text, the
+PRD, and grep over the source.
+
+**Acceptance Criteria:**
+- [x] [`docs/TECH_MANUAL.md`](TECH_MANUAL.md) covers the full surface:
+      introduction / scope, system description, installation
+      (including air-gap), CLI reference (every subcommand and flag),
+      configuration reference (`sysml-validate.toml` + `.project.json`
+      + precedence rules), output formats (one section per format
+      with annotated example), rule catalog with remediation, the
+      suppression language, baseline / diff workflow, LSP integration
+      recipes per editor (VS Code, Neovim, Helix, Emacs), CI/CD
+      integration recipes (GitHub Actions, GitLab CI, Jenkins, Azure
+      DevOps), troubleshooting recipes for the failure modes that
+      actually show up in practice, security and trust verification
+      (SHA-256, cosign, GPG, SLSA, SBOM, reproducible build), a
+      compliance pointer index, and a glossary.
+- [x] Structured per MIL-STD-38784 conventions where practical
+      (numbered sections, scope statement, glossary, change record);
+      not formally MIL-STD compliant — that requires a separate kit
+      similar to the DO-330 templates.
+- [x] Worked examples render the CLI invocation and the expected
+      output so users can grep this document and find the recipe.
+- [x] Included verbatim in the release bundle assembled by US-308.
 
 ### Phase 4 — Differentiation (open-ended)
 
