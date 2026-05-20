@@ -356,14 +356,13 @@ jobs:
           cp target/x86_64-unknown-linux-gnu/release/sysml-validate \
             verify/sysml-validate-rebuild
 
-      - name: Download original release binary
-        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
-        with:
-          tag_name: ${{ github.ref_name || inputs.tag }}
-        # This step intentionally fails closed: if the matrix build
-        # hasn't produced a release artifact yet, we have nothing to
-        # diff against and the workflow stops here. The job depends on
-        # `build` so this should always resolve in practice.
+      # Note: a previous version of this job ran softprops/action-gh-release
+      # here as a "gate" to confirm the release exists before downloading.
+      # That action is a publish action, not a download action: it tries to
+      # PATCH the release, which the repro job can't do under read-only
+      # contents permission. `needs: build` already guarantees the matrix
+      # release upload has completed, and `gh release download` below fails
+      # closed on its own if the artifact is missing. So no separate gate.
 
       - name: Fetch matrix-built artifact
         shell: bash
