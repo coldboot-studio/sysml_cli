@@ -185,8 +185,15 @@ mkdir -p "${ARCHIVE_DIR}"
 case "${ARCHIVE_KIND}" in
   tgz)
     # GNU tar's --sort=name and pinning ownership / timestamp gives a
-    # deterministic archive given a deterministic tree.
-    tar \
+    # deterministic archive given a deterministic tree. macOS ships
+    # BSD tar by default, which rejects these flags; prefer `gtar`
+    # (installed via `brew install gnu-tar` on the macOS runner) when
+    # available.
+    TAR_BIN="tar"
+    if command -v gtar >/dev/null 2>&1; then
+      TAR_BIN="gtar"
+    fi
+    "${TAR_BIN}" \
       --sort=name \
       --owner=0 --group=0 --numeric-owner \
       --mtime="@${SOURCE_DATE_EPOCH:-0}" \

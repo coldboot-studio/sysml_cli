@@ -72,7 +72,7 @@ jobs:
             ext: ""
     runs-on: ${{ matrix.os }}
     permissions:
-      contents: read
+      contents: write       # needed to create the GitHub Release and upload artifacts
       id-token: write       # OIDC token for cosign keyless + SLSA provenance
       attestations: write   # SLSA build provenance
     env:
@@ -235,17 +235,34 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          if command -v zip >/dev/null 2>&1; then exit 0; fi
-          if [[ "${RUNNER_OS}" == "Linux" ]]; then
-            sudo apt-get update && sudo apt-get install -y zip
+          # zip — Linux runner lacks it by default; macOS already ships it.
+          if ! command -v zip >/dev/null 2>&1; then
+            if [[ "${RUNNER_OS}" == "Linux" ]]; then
+              sudo apt-get update && sudo apt-get install -y zip
+            fi
+          fi
+          # gnu-tar — macOS ships BSD tar, which doesn't support
+          # --sort=name / --owner / --numeric-owner used by the bundle
+          # assembler for deterministic output. Install GNU tar so the
+          # script (which probes for `gtar`) can find it.
+          if [[ "${RUNNER_OS}" == "macOS" ]] && ! command -v gtar >/dev/null 2>&1; then
+            brew install gnu-tar
           fi
 
       - name: Install bundle dependencies (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        # The Git-for-Windows bash that runs `shell: bash` steps ships
-        # zip + sha256sum + tar. Nothing to install.
-        run: zip --version >/dev/null && tar --version >/dev/null
+        # windows-latest ships 7-Zip but NOT GNU `zip` in the bash PATH.
+        # The assembler invokes `zip -X -r`, so we install it via choco
+        # (Chocolatey is preinstalled on windows-latest runners).
+        run: |
+          if ! command -v zip >/dev/null 2>&1; then
+            choco install zip --no-progress -y
+            # choco drops the binary at C:\ProgramData\chocolatey\bin
+            # which is on PATH for subsequent steps; verify here too.
+          fi
+          zip --version >/dev/null
+          tar --version >/dev/null
 
       - name: Assemble government release bundle (US-308)
         # Per-target bundle: binary + signatures + SBOMs + SLSA +
