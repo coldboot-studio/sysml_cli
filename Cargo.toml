@@ -29,7 +29,7 @@ include_dir = { version = "0.7", features = ["glob"] }
 # US-201 (Batch K): tree-sitter parser for SysML v2. Gives us a real
 # CST so we can fix the false positives documented in
 # docs/differential-corpus-report.md.
-tree-sitter = "0.24"
+tree-sitter = "0.26"
 tree-sitter-sysml = "0.1"
 # US-206 (Batch M): thin LSP server using rust-analyzer's lsp-server
 # scaffold + the canonical lsp-types crate. Sync stdio JSON-RPC; no
