@@ -100,10 +100,12 @@ matchers), JSON, and the default human-readable text.
 | SLSA v1.0 Build Level 3 in-toto provenance | SLSA / OpenSSF |
 | Reproducible build (byte-identical rebuild on independent runner) | Reproducible Builds project; verified per release by `diffoscope` |
 | Conformance pack: NIST SP 800-218 SSDF, 800-53 Rev 5, CMMC 2.0 L2, DO-330 TQL-5 templates, NASA NPR 7150.2D template, Section 508 VPAT 2.5 draft | NIST / DoD / FAA / NASA / Access Board |
+| AI-assisted development disclosure with verification-pipeline alignment | NIST AI RMF 1.0 / NIST SP 800-218A (SSDF-ML) |
 
 Each item is **verifiable by the consumer** — no trust in the
 project office is required. The full verification recipe is in
-[`SECURITY.md`](SECURITY.md).
+[`SECURITY.md`](SECURITY.md); the AI-assisted-development disclosure
+is in [`AI_DEVELOPMENT_DISCLOSURE.md`](AI_DEVELOPMENT_DISCLOSURE.md).
 
 ## Deployment model
 

@@ -102,6 +102,16 @@ Trivy, Dependency-Track, etc.) to gate on advisories.
 See [`THREAT_MODEL.md`](THREAT_MODEL.md) for the trust boundaries this
 tool defends and the boundaries it explicitly does not.
 
+## AI-assisted development
+
+The project is partly authored with AI-assisted coding tools and
+takes the position that the audit-relevant trust controls are the
+verification pipeline (testing, SAST, signed releases, reproducible
+builds, SBOMs, provenance) — not the choice of authoring tool. The
+full disclosure, NIST AI RMF / SSDF-ML alignment, and the procedure
+for getting specifics is in
+[`AI_DEVELOPMENT_DISCLOSURE.md`](AI_DEVELOPMENT_DISCLOSURE.md).
+
 ## Air-gap and offline deployment
 
 See [`OFFLINE.md`](OFFLINE.md) for the air-gap contract: which
