@@ -71,7 +71,7 @@ OpenPGP trust path.
 # Fetch the project signing key once. The fingerprint is published on
 # the project landing page and at keys.openpgp.org.
 gpg --keyserver keys.openpgp.org \
-    --recv-keys <FINGERPRINT_TO_BE_PUBLISHED_AT_FIRST_RELEASE>
+    --recv-keys A28BF72181330CEFE8F24B11B2FFD0F520426446
 
 gpg --verify sysml-validate-<target>.asc sysml-validate-<target>
 ```
