@@ -118,13 +118,41 @@ fn run(raw_args: &[String]) -> Result<i32, String> {
         Some("grammar-info") => run_grammar_info(&args[1..]),
         Some("corpus-info") => run_corpus_info(&args[1..]),
         Some("library-info") => run_library_info(&args[1..]),
-        Some("lsp") => lsp::run().map(|_| 0),
+        Some("lsp") => run_lsp(&args[1..]),
+        Some("-V") | Some("--version") => {
+            print_version();
+            Ok(0)
+        }
         Some("-h") | Some("--help") | None => {
             print_help();
             Ok(0)
         }
-        Some(command) => Err(format!("unknown command '{command}'")),
+        Some(command) => Err(format!(
+            "unknown command '{command}' (run `sysml-validate --help` for the subcommand list)"
+        )),
     }
+}
+
+fn run_lsp(args: &[String]) -> Result<i32, String> {
+    // `lsp` itself takes no operational flags today; we only accept
+    // -h/--help. Anything else would otherwise be silently ignored
+    // (the LSP loop reads stdin), which is a confusing UX.
+    let mut show_help = false;
+    for arg in args {
+        match arg.as_str() {
+            "-h" | "--help" => show_help = true,
+            other => {
+                return Err(format!(
+                    "unknown lsp option '{other}' (lsp takes no flags; it speaks LSP over stdin/stdout)"
+                ));
+            }
+        }
+    }
+    if show_help {
+        print_lsp_help();
+        return Ok(0);
+    }
+    lsp::run().map(|_| 0)
 }
 
 fn run_validate(args: &[String], raw_args: &[String]) -> Result<i32, String> {
@@ -382,7 +410,7 @@ fn run_library_info(args: &[String]) -> Result<i32, String> {
                 library_path = Some(PathBuf::from(value));
             }
             "-h" | "--help" => {
-                println!("Usage: sysml-validate library-info [--format text|json] [--library-path <dir>]");
+                print_library_help();
                 return Ok(0);
             }
             option => return Err(format!("unknown library-info option '{option}'")),
@@ -676,67 +704,243 @@ fn collect_model_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), Strin
 
 fn print_help() {
     println!("sysml-validate {}", env!("CARGO_PKG_VERSION"));
+    println!("Preflight validator for SysML v2 and KerML textual models.");
     println!();
-    println!("Usage:");
-    println!("  sysml-validate validate <paths> [--format text|plain|json|sarif|junit] [--ci] [--strict] [--fail-on-warning] [--show-suppressed]");
-    println!("  sysml-validate validate <paths> --baseline <prior.sarif> [--update-baseline --ci]");
-    println!("  sysml-validate validate <paths> --backend official --official-command <template> [--timeout <seconds>]");
-    println!("  sysml-validate grammar-info [--format text|json]");
-    println!("  sysml-validate corpus-info [--format text|json]");
-    println!("  sysml-validate library-info [--format text|json] [--library-path <dir>]");
-    println!("  sysml-validate lsp                          # Language Server (stdio)");
+    println!("USAGE:");
+    println!("  sysml-validate <SUBCOMMAND> [OPTIONS]");
+    println!("  sysml-validate --help | --version");
+    println!();
+    println!("SUBCOMMANDS:");
+    println!("  validate       Validate one or more .sysml / .kerml files or directories.");
+    println!("  grammar-info   Show the SysML v2 / KerML textual grammar references in use.");
+    println!("  corpus-info    Show public model corpora useful for smoke-testing.");
+    println!("  library-info   Show the embedded SysML v2 standard library inventory.");
+    println!("  lsp            Run the Language Server (stdio JSON-RPC; no flags).");
+    println!();
+    println!("GLOBAL OPTIONS:");
+    println!(
+        "  -h, --help     Show this help. Append to any subcommand for subcommand-specific help."
+    );
+    println!("  -V, --version  Print version and exit.");
+    println!();
+    println!("EXAMPLES:");
+    println!("  # Validate a single file (text output, exit 1 if errors)");
+    println!("  sysml-validate validate model.sysml");
+    println!();
+    println!(
+        "  # CI mode: SARIF 2.1.0 to stdout, dropped into GitHub Advanced Security / Iron Bank"
+    );
+    println!("  sysml-validate validate src --ci > findings.sarif");
+    println!();
+    println!("  # Seed a baseline for incremental adoption on an existing project");
+    println!("  sysml-validate validate src --ci --baseline baseline.sarif --update-baseline");
+    println!();
+    println!("  # Show what's in the embedded standard library");
+    println!("  sysml-validate library-info");
+    println!();
+    println!("Run `sysml-validate <SUBCOMMAND> --help` for the full option list for a subcommand.");
+    println!("Full reference: docs/ in this repository, especially");
+    println!("  PRD-government-readiness.md, SECURITY.md, OFFLINE.md, accessibility.md.");
+}
+
+fn print_version() {
+    // One-line cargo-style. Consumers that want richer build metadata
+    // (rule catalog version, backend identity, library release) get
+    // it in the per-run metadata block emitted by `validate`.
+    println!("sysml-validate {}", env!("CARGO_PKG_VERSION"));
+}
+
+fn print_lsp_help() {
+    println!("Usage: sysml-validate lsp");
+    println!();
+    println!("Run the Language Server. Speaks LSP 3.x over stdin/stdout JSON-RPC.");
+    println!("No flags. The server is launched by an editor client (VS Code, Neovim,");
+    println!("Helix, etc.) — running it manually from a terminal will appear to hang");
+    println!("because it is waiting for a JSON-RPC `initialize` request on stdin.");
+    println!();
+    println!("Capabilities:");
+    println!("  textDocument/didOpen          parse + validate buffer, publish diagnostics");
+    println!("  textDocument/didChange        full-text sync, re-validate, re-publish");
+    println!("  textDocument/didClose        clear diagnostics");
+    println!("  textDocument/hover            render the SYSMLxxx rule catalog entry");
+    println!("                                under the cursor as markdown");
+    println!("  textDocument/publishDiagnostics  push diagnostics to client");
+    println!();
+    println!("Example client config (Neovim with nvim-lspconfig):");
+    println!("  require'lspconfig'.sysml_validate.setup{{");
+    println!("    cmd = {{ 'sysml-validate', 'lsp' }},");
+    println!("    filetypes = {{ 'sysml', 'kerml' }},");
+    println!("  }}");
 }
 
 fn print_validate_help() {
-    println!("Usage: sysml-validate validate <paths> [options]");
+    println!("Usage: sysml-validate validate <PATHS>... [OPTIONS]");
     println!();
-    println!("Options:");
-    println!("  --format text|plain|json|sarif|junit  output format (default: text)");
-    println!("                                    'plain' is the screen-reader-friendly");
+    println!("Validate one or more .sysml / .kerml files or directories. Directories");
+    println!("are walked recursively. Validation is project-aware: cross-file imports");
+    println!("resolve through the project index and the embedded SysML v2 standard");
+    println!("library.");
+    println!();
+    println!("OPTIONS:");
+    println!("  -h, --help                      Show this help and exit.");
     println!(
-        "                                    no-decoration variant (see docs/accessibility.md)"
+        "      --format <FORMAT>           Output format: text | plain | json | sarif | junit"
     );
-    println!("  --ci                            shortcut for --format sarif");
-    println!("  --strict                        warn on unresolved identifiers");
-    println!("  --fail-on-warning               exit 1 if any warning is produced");
-    println!("  --show-suppressed               include suppressed diagnostics in text/JSON");
-    println!("  --config <path>                 explicit config file");
-    println!("  --no-config                     skip config-file discovery");
-    println!("  --library-path <dir>            override embedded SysML v2 std library");
-    println!("  --baseline <path>               classify findings against a prior SARIF run");
+    println!("                                  (default: text)");
     println!(
-        "  --update-baseline               overwrite --baseline with the current run (--ci only)"
+        "                                    text   human-readable with header + per-file groups"
     );
-    println!("  --backend native|official");
-    println!("  --official-command <argv template containing {{file}}>");
-    println!("  --timeout <seconds>             official backend only (default 60)");
+    println!(
+        "                                    plain  GCC-style one diagnostic per line, ANSI-free"
+    );
+    println!("                                           (screen-reader / IDE / grep friendly)");
+    println!("                                    json   legacy JSON with metadata block");
+    println!("                                    sarif  SARIF 2.1.0 (GitHub Advanced Security,");
+    println!("                                           SonarQube, Iron Bank, Azure DevOps)");
+    println!(
+        "                                    junit  Maven Surefire JUnit XML (Jenkins, GitLab)"
+    );
+    println!("      --ci                        Shortcut for `--format sarif`.");
+    println!(
+        "      --strict                    Warn on unresolved identifier references (SYSML040)."
+    );
+    println!("      --fail-on-warning           Exit 1 if any warning is produced.");
+    println!("      --show-suppressed           Include suppressed diagnostics in text / JSON.");
+    println!(
+        "                                  Suppressed always appear in SARIF as suppressions[]."
+    );
+    println!("      --config <PATH>             Use an explicit sysml-validate.toml.");
+    println!("      --no-config                 Skip config-file discovery entirely.");
+    println!("      --library-path <DIR>        Override the embedded SysML v2 std library with");
+    println!("                                  an on-disk copy (e.g., a pre-release library).");
+    println!("      --baseline <PATH>           Classify findings against a prior SARIF run.");
+    println!("                                  Unchanged + suppressed do not affect exit code.");
+    println!(
+        "      --update-baseline           Overwrite --baseline with the current run and exit 0."
+    );
+    println!(
+        "                                  Requires `--format sarif` (or `--ci`) and `--baseline`."
+    );
+    println!("      --backend <KIND>            native (built-in, default) | official (delegate).");
+    println!(
+        "      --official-command <TPL>    Argv template for `--backend official`. `{{file}}` is"
+    );
+    println!(
+        "                                  replaced with each model path. Tokenized with shell-"
+    );
+    println!(
+        "                                  style quoting and invoked with positional argv — no"
+    );
+    println!(
+        "                                  shell is spawned, so metacharacters survive only as"
+    );
+    println!("                                  literal argv content.");
+    println!("      --timeout <SECONDS>         Kill the official backend if it exceeds this. The");
+    println!("                                  child is terminated and SYSML904 is emitted.");
+    println!("                                  Default: 60.");
     println!();
-    println!("Configuration is read from sysml-validate.toml in the working");
-    println!("directory or any ancestor. CLI flags always override config values.");
-    println!("Config supports: project_root, default_format, default_strict,");
-    println!("default_fail_on_warning, [rules] severity overrides, include/exclude");
-    println!("glob patterns.");
+    println!("EXIT CODES:");
+    println!("  0   No errors found (or `--update-baseline` accepted the current state).");
+    println!("  1   Validation errors found (or warnings under `--fail-on-warning`).");
+    println!("  2   CLI / config / backend setup error (the run never completed).");
     println!();
-    println!("--official-command is tokenized with shell-style quoting and");
-    println!("invoked with positional argv. No shell process is spawned. If the");
-    println!("child exceeds --timeout it is terminated and SYSML904 is emitted.");
+    println!("CONFIGURATION:");
+    println!("  `sysml-validate.toml` in the working directory or any ancestor is loaded");
+    println!("  automatically. CLI flags always override config values. Supported keys:");
+    println!("  project_root, default_format, default_strict, default_fail_on_warning,");
+    println!("  include / exclude glob patterns, [rules] per-code severity overrides");
+    println!("  (error | warning | info | off). Unknown keys are rejected at parse time.");
     println!();
-    println!("Suppress diagnostics inline with:");
-    println!("  // sysml-validate: disable=SYSML041");
-    println!("  // sysml-validate: disable-next-line=SYSML041,SYSML040");
-    println!("  // sysml-validate: disable=all");
+    println!("PROJECT MANIFEST:");
+    println!("  A Sysand-compatible `.project.json` in the working directory or any");
+    println!("  ancestor is discovered automatically. Its `root` field defines the");
+    println!("  source root and takes precedence over `sysml-validate.toml`'s");
+    println!("  `project_root`.");
     println!();
-    println!("Baseline mode classifies each finding as 'new' or 'unchanged'.");
-    println!("Only 'new' findings affect the exit code; 'unchanged' findings");
-    println!("are reported with baselineState=unchanged in SARIF.");
+    println!("SUPPRESSIONS:");
+    println!("  Suppress diagnostics inline with a line comment:");
+    println!("    // sysml-validate: disable=SYSML041");
+    println!("    // sysml-validate: disable-next-line=SYSML041,SYSML040");
+    println!("    // sysml-validate: disable=all");
+    println!("  Directives that don't match any diagnostic produce SYSML050;");
+    println!("  invalid directive syntax produces SYSML060.");
+    println!();
+    println!("ENVIRONMENT:");
+    println!("  NO_COLOR             The tool emits zero ANSI escape sequences in any");
+    println!("                       format, so NO_COLOR is honored trivially.");
+    println!("                       See docs/accessibility.md.");
+    println!("  SOURCE_DATE_EPOCH    Build-time only (governs embedded build timestamps");
+    println!("                       for reproducible builds). Not consulted at runtime.");
+    println!();
+    println!("EXAMPLES:");
+    println!("  # Validate a single file (text output)");
+    println!("  sysml-validate validate model.sysml");
+    println!();
+    println!("  # CI: SARIF 2.1.0 to stdout for GitHub Advanced Security upload");
+    println!("  sysml-validate validate src --ci > findings.sarif");
+    println!();
+    println!("  # Strict gate: warn on unresolved identifiers and fail on warnings");
+    println!("  sysml-validate validate src --strict --fail-on-warning");
+    println!();
+    println!("  # Plain output for screen readers / grep / IDE problem matchers");
+    println!("  sysml-validate validate src --format plain");
+    println!();
+    println!("  # JUnit XML for Jenkins / GitLab test reporters");
+    println!("  sysml-validate validate src --format junit > junit.xml");
+    println!();
+    println!("  # Baseline mode — seed once, then only NEW findings fail CI");
+    println!("  sysml-validate validate src --ci --baseline baseline.sarif --update-baseline");
+    println!("  sysml-validate validate src --ci --baseline baseline.sarif");
+    println!();
+    println!("  # Delegate to the official validator with a 2-minute hard timeout");
+    println!("  sysml-validate validate model.sysml --backend official \\");
+    println!("      --official-command \"sysml-validator --strict {{file}}\" --timeout 120");
+    println!();
+    println!("See `docs/PRD-government-readiness.md` for the full rule catalog and");
+    println!("`docs/SECURITY.md` for release-verification recipes.");
 }
 
 fn print_grammar_help() {
     println!("Usage: sysml-validate grammar-info [--format text|json]");
+    println!();
+    println!("Show the SysML v2 / KerML textual grammar references in use:");
+    println!("filenames (`SysML-textual-bnf.kebnf`, `KerML-textual-bnf.kebnf`), the");
+    println!("OMG specification revisions they track, and the on-disk path under");
+    println!("`vendor/sysml-v2-release/bnf/`.");
+    println!();
+    println!("OPTIONS:");
+    println!("  -h, --help              Show this help and exit.");
+    println!("      --format <FORMAT>   text (default) | json");
 }
 
 fn print_corpus_help() {
     println!("Usage: sysml-validate corpus-info [--format text|json]");
+    println!();
+    println!("List public SysML v2 model corpora useful for smoke tests and");
+    println!("differential testing: official examples / training / validation /");
+    println!("library models, community-curated repositories, and OMG machine-");
+    println!("readable bundles. Repo URLs and short descriptions only; no network");
+    println!("calls are made by this subcommand.");
+    println!();
+    println!("OPTIONS:");
+    println!("  -h, --help              Show this help and exit.");
+    println!("      --format <FORMAT>   text (default) | json");
+}
+
+fn print_library_help() {
+    println!("Usage: sysml-validate library-info [--format text|json] [--library-path <DIR>]");
+    println!();
+    println!("Show the inventory of the SysML v2 standard library: source description");
+    println!("(embedded OMG release tag, or on-disk path), file count, declaration");
+    println!("count, and the full list of indexed package names. Useful for");
+    println!("confirming what `:>` / `:>>` references resolve against under `--strict`.");
+    println!();
+    println!("OPTIONS:");
+    println!("  -h, --help              Show this help and exit.");
+    println!("      --format <FORMAT>   text (default) | json");
+    println!("      --library-path <DIR>");
+    println!("                          Show the inventory of an on-disk library");
+    println!("                          directory instead of the embedded one.");
 }
 
 #[cfg(test)]
