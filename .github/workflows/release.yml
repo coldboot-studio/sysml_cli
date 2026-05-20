@@ -216,7 +216,7 @@ jobs:
         # https://slsa.dev/provenance/v1 and stores it both as an OCI
         # referrer and as a workflow artifact. SLSA v1.0 Build L3 is the
         # level documented at https://slsa.dev/spec/v1.0/levels.
-        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb # v2.1.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: dist/${{ steps.stage.outputs.name }}
 
