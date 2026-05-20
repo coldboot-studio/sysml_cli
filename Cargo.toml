@@ -4,7 +4,7 @@ version = "0.16.0"
 edition = "2021"
 description = "CLI preflight validator for SysML v2 and KerML textual models."
 license = "MIT"
-repository = "https://github.com/Systems-Modeling/SysML-v2-Release"
+repository = "https://github.com/coldboot-studio/sysml_cli"
 
 [[bin]]
 name = "sysml-validate"
