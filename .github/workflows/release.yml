@@ -145,14 +145,14 @@ jobs:
         # same tool produces both SBOM formats. cargo-cyclonedx was
         # tried first but its released versions max out at spec 1.5;
         # Syft natively emits CycloneDX 1.6.
-        uses: anchore/sbom-action@55dc4ee22412511ee8c3142cbea40418e6cec693 # v0.17.8
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: cyclonedx-json
           output-file: dist/sysml-validate-${{ matrix.target }}.cdx.json
 
       - name: Generate SPDX 3.0 SBOM
-        uses: anchore/sbom-action@55dc4ee22412511ee8c3142cbea40418e6cec693 # v0.17.8
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
           path: .
           format: spdx-json
